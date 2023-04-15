@@ -7,16 +7,6 @@ import (
 	"strconv"
 )
 
-func ExampleNewAmount() {
-	d := decimal.New(100, 0)
-	a, err := money.NewAmount(money.USD, d)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(a)
-	// Output: USD 100.00
-}
-
 // In this example, the sales tax amount is calculated for a product with
 // a given price after tax, using a specified tax rate.
 func Example_taxCalculation() {
@@ -284,10 +274,30 @@ func Example_loanAmortization() {
 	// Total     12659.89    11999.99      659.90
 }
 
+func ExampleNewAmount() {
+	curr := money.USD
+	dec := decimal.New(100, 0)
+	a, err := money.NewAmount(curr, dec)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(a)
+	// Output: USD 100.00
+}
+
 func ExampleMustParseAmount() {
 	a := money.MustParseAmount("USD", "-1.230")
 	fmt.Println(a)
 	// Output: USD -1.230
+}
+
+func ExampleParseAmount() {
+	a, err := money.ParseAmount("USD", "-12.34")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(a)
+	// Output: USD -12.34
 }
 
 func ExampleAmount_Coef() {
@@ -314,6 +324,32 @@ func ExampleAmount_MinorUnits() {
 	// -2 true
 	// -168 true
 	// -1679 true
+}
+
+func ExampleAmount_Float64() {
+	a := money.MustParseAmount("JPY", "100")
+	b := money.MustParseAmount("USD", "15.6")
+	c := money.MustParseAmount("OMR", "2.389")
+	fmt.Println(a.Float64())
+	fmt.Println(b.Float64())
+	fmt.Println(c.Float64())
+	// Output:
+	// 100 true
+	// 15.6 true
+	// 2.389 true
+}
+
+func ExampleAmount_Int64() {
+	a := money.MustParseAmount("JPY", "100")
+	b := money.MustParseAmount("USD", "15.6")
+	c := money.MustParseAmount("OMR", "2.389")
+	fmt.Println(a.Int64())
+	fmt.Println(b.Int64())
+	fmt.Println(c.Int64())
+	// Output:
+	// 100 0 true
+	// 15 60 true
+	// 2 389 true
 }
 
 func ExampleAmount_Prec() {
@@ -351,8 +387,8 @@ func ExampleAmount_Sub() {
 
 func ExampleAmount_FMA() {
 	a := money.MustParseAmount("USD", "2")
-	e := decimal.MustParse("3")
 	b := money.MustParseAmount("USD", "4")
+	e := decimal.MustParse("3")
 	fmt.Println(a.FMA(e, b))
 	// Output: USD 10.00
 }
@@ -813,14 +849,14 @@ func ParseISO8583(s string) (money.Amount, error) {
 	if err != nil {
 		return money.Amount{}, err
 	}
-	i, err := strconv.ParseInt(s[4:], 10, 64)
+	n, err := strconv.ParseInt(s[4:], 10, 64)
 	if err != nil {
 		return money.Amount{}, err
 	}
 	if s[3:4] == "D" {
-		i = -i
+		n = -n
 	}
-	d := decimal.New(i, c.Scale())
+	d := decimal.New(n, c.Scale())
 	return money.NewAmount(c, d)
 }
 
@@ -836,16 +872,22 @@ func ExampleNewAmount_iso8583() {
 }
 
 func ParseMoneyProto(curr string, units int64, nanos int32) (money.Amount, error) {
+	if units > 0 && nanos < 0 || units < 0 && nanos > 0 {
+		return money.Amount{}, fmt.Errorf("inconsistent signs")
+	}
+	if nanos > 999_999_999 || nanos < -999_999_999 {
+		return money.Amount{}, fmt.Errorf("inconsistent nanos")
+	}
 	c, err := money.ParseCurr(curr)
 	if err != nil {
 		return money.Amount{}, err
 	}
-	i := decimal.New(units, 0)
-	f := decimal.New(int64(nanos), 9).Reduce()
-	if i.Prec() > decimal.MaxPrec-c.Scale() {
-		return money.Amount{}, fmt.Errorf("with currency %v, the integer part of %T can have at most %v digit(s), but it has %v digit(s)", c, money.Amount{}, decimal.MaxPrec-c.Scale(), i.Prec())
+	u := decimal.New(units, 0)
+	n := decimal.New(int64(nanos), 9).Reduce()
+	if u.Prec() > decimal.MaxPrec-c.Scale() {
+		return money.Amount{}, fmt.Errorf("with currency %v, the integer part of %T can have at most %v digit(s), but it has %v digit(s)", c, money.Amount{}, decimal.MaxPrec-c.Scale(), u.Prec())
 	}
-	d := i.AddExact(f, c.Scale())
+	d := u.AddExact(n, c.Scale())
 	return money.NewAmount(c, d)
 }
 
@@ -874,15 +916,6 @@ func ParseStripe(currency string, amount int64) (money.Amount, error) {
 // formatted according to Stripe API specification.
 func ExampleNewAmount_stripe() {
 	a, err := ParseStripe("usd", -1234)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(a)
-	// Output: USD -12.34
-}
-
-func ExampleParseAmount() {
-	a, err := money.ParseAmount("USD", "-12.34")
 	if err != nil {
 		panic(err)
 	}
@@ -968,8 +1001,8 @@ func ExampleAmount_Min() {
 }
 
 func ExampleNewExchRate() {
-	d := decimal.New(12000, 4)
-	r, err := money.NewExchRate(money.USD, money.EUR, d)
+	dec := decimal.New(12000, 4)
+	r, err := money.NewExchRate(money.USD, money.EUR, dec)
 	if err != nil {
 		panic(err)
 	}
@@ -994,8 +1027,8 @@ func ExampleMustParseExchRate() {
 
 func ExampleExchangeRate_Conv() {
 	r := money.MustParseExchRate("USD", "JPY", "133.27")
-	a := money.MustParseAmount("USD", "200.00")
-	fmt.Println(r.Conv(a))
+	b := money.MustParseAmount("USD", "200.00")
+	fmt.Println(r.Conv(b))
 	// Output: JPY 26654.0000
 }
 
@@ -1021,8 +1054,8 @@ func ExampleExchangeRate_Scale() {
 
 func ExampleExchangeRate_Mul() {
 	r := money.MustParseExchRate("USD", "EUR", "0.9000")
-	d := decimal.MustParse("1.1")
-	fmt.Println(r.Mul(d))
+	e := decimal.MustParse("1.1")
+	fmt.Println(r.Mul(e))
 	// Output: USD/EUR 0.99000
 }
 

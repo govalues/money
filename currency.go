@@ -11,7 +11,7 @@ import (
 // The zero value is "XXX", which indicates an unknown currency.
 //
 // Currency is implemented as an integer index into an in-memory array that
-// stores information such as code, symbol, and scale.
+// stores information such as code and scale.
 // This design ensures safe concurrency for multiple goroutines accessing
 // the same Currency value.
 //
@@ -24,14 +24,14 @@ var (
 	errUnknownCurrency = errors.New("unknown currency")
 )
 
-// ParseCurr converts a string to a currency.
+// ParseCurr converts a string to currency.
 // The input string must be in one of the following formats:
 //
 //	USD
 //	usd
 //	840
 //
-// ParseCurr returns error if string does not represent a valid currency code.
+// ParseCurr returns an error if the string does not represent a valid currency code.
 func ParseCurr(curr string) (Currency, error) {
 	c, ok := currLookup[curr]
 	if !ok {
@@ -71,17 +71,17 @@ func (c Currency) Scale() int {
 	return scaleLookup[c]
 }
 
-// Code returns the [3-digit code] assigned to the currency.
-// If the currency does not have [such code], the method will return an empty string.
+// Num returns the [3-digit code] assigned to the currency by the ISO 4217 standard.
+// If the currency does not have such a [code], the method will return an empty string.
 //
 // [3-digit code]: https://en.wikipedia.org/wiki/ISO_4217#Numeric_codes
-// [such code]: https://en.wikipedia.org/wiki/ISO_4217#X_currencies_(funds,_precious_metals,_supranationals,_other)
+// [code]: https://en.wikipedia.org/wiki/ISO_4217#X_currencies_(funds,_precious_metals,_supranationals,_other)
 func (c Currency) Num() string {
 	return numLookup[c]
 }
 
-// Code returns the [3-letter code] assigned to the currency.
-// This code is a unique identifier of the currency, and is used in
+// Code returns the [3-letter code] assigned to the currency by the ISO 4217 standard.
+// This code is a unique identifier of the currency and is used in
 // international finance and commerce.
 // This method always returns a valid code.
 //
