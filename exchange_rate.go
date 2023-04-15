@@ -5,25 +5,17 @@ import (
 	"github.com/govalues/decimal"
 )
 
-// ExchangeRate type represents a unidirectional exchange rate between two currencies.
+// ExchangeRate represents a unidirectional exchange rate between two currencies.
 // The zero value corresponds to an exchange rate of "XXX/XXX 0", where XXX indicates
-// unknown currency.
-// It is designed to be safe for concurrent use by multiple goroutines.
-//
-// An exchange rate is a struct with three parameters:
-//
-//   - Base Currency: the currency being exchanged.
-//   - Quote Currency: the currency being obtained in exchange for the base currency.
-//   - Conversion Rate: the rate at which the base currency can be exchanged for
-//     the quote currency, representing how many units of the quote
-//     currency are needed to exchange for 1 unit of the base currency.
+// an unknown currency.
+// This type is designed to be safe for concurrent use by multiple goroutines.
 type ExchangeRate struct {
 	base  Currency        // currency being exchanged
 	quote Currency        // currency being obtained in exchange for the base currency
-	value decimal.Decimal // how many units of quote currency is needed to exchange for 1 unit of the base currency
+	value decimal.Decimal // how many units of quote currency are needed to exchange for 1 unit of the base currency
 }
 
-// NewExchRate returns exchange rate between base and quote currencies.
+// NewExchRate returns a new exchange rate between the base and quote currencies.
 func NewExchRate(base, quote Currency, rate decimal.Decimal) (ExchangeRate, error) {
 	if !rate.IsPos() {
 		return ExchangeRate{}, fmt.Errorf("exchange rate must be positive")
@@ -48,8 +40,8 @@ func mustNewExchRate(base, quote Currency, rate decimal.Decimal) ExchangeRate {
 	return r
 }
 
-// ParseExchRate converts currencies and decimal strings to (possibly rounded) rate.
-// Also see methods [ParseCurr] and [decimal.Parse].
+// ParseExchRate converts currency and decimal strings to a (possibly rounded) exchange rate.
+// See also methods [ParseCurr] and [decimal.Parse].
 func ParseExchRate(base, quote, rate string) (ExchangeRate, error) {
 	b, err := ParseCurr(base)
 	if err != nil {
@@ -80,21 +72,21 @@ func MustParseExchRate(base, quote, rate string) ExchangeRate {
 	return r
 }
 
-// Base returns currency being exchanged.
+// Base returns the currency being exchanged.
 func (r ExchangeRate) Base() Currency {
 	return r.base
 }
 
-// Quote returns currency being obtained in exchange for the base currency.
+// Quote returns the currency being obtained in exchange for the base currency.
 func (r ExchangeRate) Quote() Currency {
 	return r.quote
 }
 
 // Mul returns an exchange rate with the same base and quote currencies,
-// but with the rate multiplied by a positive decimal factor.
+// but with the rate multiplied by a positive factor e.
 //
-// Mul panics if the e is not positive.
-// To avoid this panic, use the [decimal.Decimal.IsPos] to verify that e
+// Mul panics if factor e is not positive.
+// To avoid this panic, use the [decimal.Decimal.IsPos] to verify that decimal
 // is positive before calling Mul.
 func (r ExchangeRate) Mul(e decimal.Decimal) ExchangeRate {
 	if !e.IsPos() {
@@ -105,8 +97,7 @@ func (r ExchangeRate) Mul(e decimal.Decimal) ExchangeRate {
 	return mustNewExchRate(r.Base(), r.Quote(), f)
 }
 
-// CanConv returns true if [ExchangeRate.Conv] can be used
-// to convert amount b.
+// CanConv returns true if [ExchangeRate.Conv] can be used to convert the given amount.
 func (r ExchangeRate) CanConv(b Amount) bool {
 	return b.Curr() == r.Base() &&
 		r.Base() != XXX &&
@@ -114,12 +105,12 @@ func (r ExchangeRate) CanConv(b Amount) bool {
 		r.value.IsPos()
 }
 
-// Conv returns amount converted from base currency to quote currency.
+// Conv returns the amount converted from the base currency to the quote currency.
 //
-// Conv panics if the base currency of the exchange rate is not compatible
-// with the currency of the given amount.
+// Conv panics if the base currency of the exchange rate does not match
+// the currency of the given amount.
 // To avoid this panic, use the [ExchangeRate.CanConv] method to ensure
-// the currencies match before calling Conv.
+// the currencies are compatible before calling Conv.
 func (r ExchangeRate) Conv(b Amount) Amount {
 	if !r.CanConv(b) {
 		panic(fmt.Sprintf("%q.Conv(%q) failed: %v", r, b, errCurrencyMismatch))
@@ -130,7 +121,7 @@ func (r ExchangeRate) Conv(b Amount) Amount {
 	return mustNewAmount(r.Quote(), f)
 }
 
-// Inv returns inverse of the given exchange rate.
+// Inv returns the inverse of the exchange rate.
 func (r ExchangeRate) Inv() ExchangeRate {
 	d := r.value
 	if d.IsZero() {
@@ -140,58 +131,67 @@ func (r ExchangeRate) Inv() ExchangeRate {
 	return mustNewExchRate(r.Quote(), r.Base(), one.Quo(d))
 }
 
-// SameCurr returns true if both r and q are denomintated in the same base
+// SameCurr returns true if exchange rates are denominated in the same base
 // and quote currencies.
-// Also see methods [ExchangeRate.Base] and [ExchangeRate.Quote].
+// See also methods [ExchangeRate.Base] and [ExchangeRate.Quote].
 func (r ExchangeRate) SameCurr(q ExchangeRate) bool {
 	return q.Base() == r.Base() && q.Quote() == r.Quote()
 }
 
-// SameScale returns true if the numeric values of r and q have the same scale.
-// Also see method [ExchangeRate.Scale].
+// SameScale returns true if exchange rates have the same scale.
+// See also method [ExchangeRate.Scale].
 func (r ExchangeRate) SameScale(q ExchangeRate) bool {
 	return q.Scale() == r.Scale()
 }
 
-// SameScaleAsCurr returns true if rate has the same scale as the sum of the scales
-// of its base and quote currencies.
-// Also see method [ExchangeRate.RoundToCurr].
+// SameScaleAsCurr returns true if the scale of the exchange rate is equal to
+// the sum of the scales of its base and quote currencies.
+// See also method [ExchangeRate.RoundToCurr].
 func (r ExchangeRate) SameScaleAsCurr() bool {
 	return r.Scale() == r.Base().Scale()+r.Quote().Scale()
 }
 
-// Prec returns number of digits in the coefficient.
+// Prec returns the number of digits in the coefficient.
 func (r ExchangeRate) Prec() int {
 	return r.value.Prec()
 }
 
-// Scale returns number of digits after the decimal point.
+// Scale returns the number of digits after the decimal point.
 func (r ExchangeRate) Scale() int {
 	return r.value.Scale()
 }
 
-// IsZero returns true if r == 0.
+// IsZero returns:
+//
+//	true  if r == 0
+//	false otherwise
 func (r ExchangeRate) IsZero() bool {
 	return r.value.IsZero()
 }
 
-// IsOne returns true if r == 1.
+// IsOne returns:
+//
+//	true  if r == 1
+//	false otherwise
 func (r ExchangeRate) IsOne() bool {
 	return r.value.IsOne()
 }
 
-// WithinOne returns true if 0 <= r < 1.
+// WithinOne returns:
+//
+//	true  if 0 <= r < 1
+//	false otherwise
 func (r ExchangeRate) WithinOne() bool {
 	return r.value.WithinOne()
 }
 
-// Round returns rate that is rounded to the specified number of digits after
+// Round returns an exchange rate that is rounded to the specified number of digits after
 // the decimal point.
-// If the scale of rate is less than the specified scale, the result will be
+// If the scale of the exchange rate is less than the specified scale, the result will be
 // zero-padded to the right.
-// If specified scale is less than the sum of scales of base and quote
-// currency then rate will be rounded to the sum of scales instead.
-// Also see method [ExchangeRate.RoundToCurr].
+// If the specified scale is less than the sum of the scales of the base and quote
+// currency then the exchange rate will be rounded to the sum of scales instead.
+// See also method [ExchangeRate.RoundToCurr].
 //
 // Round panics if the integer part of the result exceeds the maximum precision.
 // This limit is calculated as ([decimal.MaxPrec] - scale).
@@ -203,15 +203,16 @@ func (r ExchangeRate) Round(scale int) ExchangeRate {
 	return mustNewExchRate(r.Base(), r.Quote(), d.Round(scale))
 }
 
-// RoundToCurr returns rate that is rounded to the sum of scales of its base
-// and quote currency. Also see method [ExchangeRate.SameScaleAsCurr].
+// RoundToCurr returns an exchange rate that is rounded to the sum of the scales of its base
+// and quote currencies.
+// See also method [ExchangeRate.SameScaleAsCurr].
 func (r ExchangeRate) RoundToCurr() ExchangeRate {
 	return r.Round(r.Base().Scale() + r.Quote().Scale())
 }
 
 // String method implements the [fmt.Stringer] interface and returns a string
-// representation of an exchange rate.
-// Also see methods [Currency.String] and [Decimal.String].
+// representation of the exchange rate.
+// See also methods [Currency.String] and [Decimal.String].
 //
 // [fmt.Stringer]: https://pkg.go.dev/fmt#Stringer
 // [Decimal.String]: https://pkg.go.dev/github.com/govalues/decimal#Decimal.String
@@ -232,8 +233,6 @@ func (r ExchangeRate) String() string {
 //
 // Precision is only supported for the %f verb.
 // The default precision is equal to the sum of the scales of its base and quote currencies.
-//
-// See the test cases for examples of various formatting options.
 //
 // [format verbs]: https://pkg.go.dev/fmt#hdr-Printing
 // [fmt.Formatter]: https://pkg.go.dev/fmt#Formatter

@@ -13,20 +13,16 @@ var (
 )
 
 // Amount type represents a monetary amount.
-// The zero value corresponds to a monetary amount of "XXX 0", where XXX indicates
-// unknown currency.
-// It is designed to be safe for concurrent use by multiple goroutines.
-//
-// An amount type is a struct with two parameters:
-//
-//   - Currency: an ISO 4217 currency code.
-//   - Amount: a decimal representing the monetary value.
+// The zero value corresponds to "XXX 0", where XXX indicates an unknown currency.
+// This type is designed to be safe for concurrent use by multiple goroutines.
 type Amount struct {
-	curr  Currency        // currency
-	value decimal.Decimal // decimal value
+	curr  Currency        // an ISO 4217 currency code
+	value decimal.Decimal // the monetary value
 }
 
-// NewAmount returns new amount.
+// NewAmount returns a new amount with the specified currency and value.
+// If the scale of the amount is less than the scale of the currency, the result
+// will be zero-padded to the right.
 func NewAmount(curr Currency, amount decimal.Decimal) (Amount, error) {
 	if amount.Scale() < curr.Scale() {
 		if amount.Prec()-amount.Scale() > decimal.MaxPrec-curr.Scale() {
@@ -46,7 +42,7 @@ func mustNewAmount(curr Currency, amount decimal.Decimal) Amount {
 }
 
 // ParseAmount converts currency and decimal strings to (possibly rounded) amount.
-// Also see methods [ParseCurr] and [decimal.Parse].
+// See also methods [ParseCurr] and [decimal.Parse].
 func ParseAmount(curr, amount string) (Amount, error) {
 	c, err := ParseCurr(curr)
 	if err != nil {
@@ -64,7 +60,7 @@ func ParseAmount(curr, amount string) (Amount, error) {
 }
 
 // MustParseAmount is like [ParseAmount] but panics if any of the strings cannot be parsed.
-// It simplifies safe initialization of global variables holding amounts.
+// This function simplifies safe initialization of global variables holding amounts.
 func MustParseAmount(curr, amount string) Amount {
 	a, err := ParseAmount(curr, amount)
 	if err != nil {
@@ -74,15 +70,15 @@ func MustParseAmount(curr, amount string) Amount {
 }
 
 // Coef returns the coefficient of the amount.
-// Also see methods [Amount.Prec] and [Amount.MinorUnits].
+// See also methods [Amount.Prec] and [Amount.MinorUnits].
 func (a Amount) Coef() uint64 {
 	return a.value.Coef()
 }
 
-// MinorUnits returns (potentially rounded) amount in minor units of currency.
-// If result cannot be represented as int64, then false is returned.
-// Also see method [Amount.RoundToCurr].
-func (a Amount) MinorUnits() (int64, bool) {
+// MinorUnits returns the (potentially rounded) amount in minor units of currency.
+// If the result cannot be represented as an int64, then false is returned.
+// See also method [Amount.RoundToCurr].
+func (a Amount) MinorUnits() (m int64, ok bool) {
 	coef := a.RoundToCurr().Coef()
 	if a.IsNeg() {
 		if coef > -math.MinInt64 {
@@ -97,12 +93,29 @@ func (a Amount) MinorUnits() (int64, bool) {
 	}
 }
 
-// Prec returns number of digits in the coefficient.
+// Float64 returns a float64 representation of the amount.
+// This conversion may lose data, as float64 has a limited precision
+// compared to the decimal type.
+func (a Amount) Float64() (f float64, ok bool) {
+	return a.value.Float64()
+}
+
+// Int64 returns a pair of int64 values, where the first represents
+// the integer part and the second represents the fractional part of the amount,
+// such that a = i + f / 10^scale.
+// If the result cannot be accurately represented as a pair of int64 values,
+// the method returns false.
+func (a Amount) Int64() (i int64, f int64, ok bool) {
+	return a.value.Int64()
+}
+
+// Prec returns the number of digits in the coefficient.
+// See also method [Amount.Coef].
 func (a Amount) Prec() int {
 	return a.value.Prec()
 }
 
-// Curr returns currency of amount.
+// Curr returns the currency of the amount.
 func (a Amount) Curr() Currency {
 	return a.curr
 }
@@ -116,72 +129,87 @@ func (a Amount) Sign() int {
 	return a.value.Sign()
 }
 
-// IsNeg returns true if a < 0.
+// IsNeg returns:
+//
+//	true  if a < 0
+//	false otherwise
 func (a Amount) IsNeg() bool {
 	return a.value.IsNeg()
 }
 
-// IsPos returns true if a > 0.
+// IsPos returns:
+//
+//	true  if a > 0
+//	false otherwise
 func (a Amount) IsPos() bool {
 	return a.value.IsPos()
 }
 
-// Abs returns absolute value of a.
+// Abs returns the absolute value of the amount.
 func (a Amount) Abs() Amount {
 	d := a.value
 	return mustNewAmount(a.Curr(), d.Abs())
 }
 
-// Neg returns a with opposite sign.
+// Neg returns the amount with the opposite sign.
 func (a Amount) Neg() Amount {
 	d := a.value
 	return mustNewAmount(a.Curr(), d.Neg())
 }
 
-// CopySign returns a with the same sign as b.
-// If b is zero, sign of the result remains unchanged.
+// CopySign returns the amount with the same sign as amount b.
+// If amount b is zero, the sign of the result remains unchanged.
 func (a Amount) CopySign(b Amount) Amount {
 	d := a.value
 	e := b.value
 	return mustNewAmount(a.Curr(), d.CopySign(e))
 }
 
-// Reduce returns a with trailing zeros removed up to its currency scale.
+// Reduce returns the amount with trailing zeros removed up to its currency scale.
 func (a Amount) Reduce() Amount {
 	d := a.value
 	return mustNewAmount(a.Curr(), d.Reduce())
 }
 
-// Scale returns number of digits after decimal point.
+// Scale returns the number of digits after the decimal point.
 func (a Amount) Scale() int {
 	return a.value.Scale()
 }
 
-// IsZero returns true if a == 0.
+// IsZero returns:
+//
+//	true  if a == 0
+//	false otherwise
 func (a Amount) IsZero() bool {
 	return a.value.IsZero()
 }
 
-// IsOne returns true if a == -1 or a == 1.
+// IsOne returns:
+//
+//	true  if a == -1 || a == 1
+//	false otherwise
 func (a Amount) IsOne() bool {
 	return a.value.IsOne()
 }
 
-// IsInt returns true if fractional part of a is 0.
+// IsInt returns true if the fractional part of the amount is equal to zero.
 func (a Amount) IsInt() bool {
 	return a.value.IsInt()
 }
 
-// WithinOne returns true if -1 < a < 1.
+// WithinOne returns:
+//
+//	true  if -1 < a < 1
+//	false otherwise
 func (a Amount) WithinOne() bool {
 	return a.value.WithinOne()
 }
 
-// Add returns (possibly rounded) sum of a and b.
+// Add returns the (possibly rounded) sum of amounts a and b.
 //
 // Add panics if:
-//   - the a and b are denominated in different currencies.
-//     To avoid this panic, use the [Amount.SameCurr] to verify that both amounts
+//   - amounts are denominated in different currencies.
+//     To avoid this panic, use [Amount.SameCurr] to verify that both amounts
 //     have the same currency before calling Add.
 //   - the integer part of the result exceeds the maximum precision allowed by the currency.
 //     This limit is calculated as ([decimal.MaxPrec] - a.Curr().Scale()).
@@ -197,11 +225,11 @@ func (a Amount) Add(b Amount) Amount {
 	return mustNewAmount(a.Curr(), f)
 }
 
-// Sub returns (possibly rounded) difference of a and b.
+// Sub returns the (possibly rounded) difference of amounts a and b.
 //
 // Sub panics if:
-//   - the a and b are denominated in different currencies.
-//     To avoid this panic, use the [Amount.SameCurr] to verify that both amounts
+//   - amounts are denominated in different currencies.
+//     To avoid this panic, use [Amount.SameCurr] to verify that both amounts
 //     have the same currency before calling Sub.
 //   - the integer part of the result exceeds the maximum precision allowed by the currency.
 //     This limit is calculated as ([decimal.MaxPrec] - a.Curr().Scale()).
@@ -217,14 +245,14 @@ func (a Amount) Sub(b Amount) Amount {
 	return mustNewAmount(a.Curr(), f)
 }
 
-// FMA returns (possibly rounded) [fused multiply-addition] of a, b and e.
+// FMA returns the (possibly rounded) [fused multiply-addition] of amounts a, b, and factor e.
 // It computes a * e + b without any intermeddiate rounding.
 // This method is useful for improving the accuracy and performance of algorithms
 // that involve the accumulation of products, such as daily interest accrual.
 //
 // FMA panics if:
-//   - the a and b are denominated in different currencies.
-//     To avoid this panic, use the [Amount.SameCurr] to verify that both amounts
+//   - amounts are denominated in different currencies.
+//     To avoid this panic, use [Amount.SameCurr] to verify that both amounts
 //     have the same currency before calling FMA.
 //   - the integer part of the result exceeds the maximum precision allowed by the currency.
 //     This limit is calculated as ([decimal.MaxPrec] - a.Curr().Scale()).
@@ -242,7 +270,7 @@ func (a Amount) FMA(e decimal.Decimal, b Amount) Amount {
 	return mustNewAmount(a.Curr(), d)
 }
 
-// Mul returns (possibly rounded) product of a and e.
+// Mul returns the (possibly rounded) product of amount a and factor e.
 //
 // Mul panics if the integer part of the result exceeds the maximum precision
 // allowed by the currency.
@@ -255,11 +283,11 @@ func (a Amount) Mul(e decimal.Decimal) Amount {
 	return mustNewAmount(a.Curr(), f)
 }
 
-// Quo returns (possible rounded) quotient of a and e.
+// Quo returns the (possibly rounded) quotient of amount a and divisor e.
 //
 // Quo panics if:
-//   - e is zero.
-//     To avoid this panic, use the [decimal.Decimal.IsZero] to verify that decimal
+//   - divisor is zero.
+//     To avoid this panic, use [decimal.Decimal.IsZero] to verify that decimal
 //     is not zero before calling Quo.
 //   - the integer part of the result exceeds the maximum precision allowed by the currency.
 //     This limit is calculated as ([decimal.MaxPrec] - a.Curr().Scale()).
@@ -274,13 +302,13 @@ func (a Amount) Quo(e decimal.Decimal) Amount {
 	return mustNewAmount(a.Curr(), d)
 }
 
-// Rat returns (possibly rounded) ratio between a and b.
+// Rat returns the (possibly rounded) ratio between amounts a and b.
 // This method is particularly useful for calculating exchange rates between
 // two currencies or determining percentages within a single currency.
 //
 // Rat panics if:
-//   - b is zero.
-//     To avoid this panic, use the [Amount.IsZero] to verify that the amount
+//   - amount is zero.
+//     To avoid this panic, use [Amount.IsZero] to verify that the amount
 //     is not zero before calling Rat.
 //   - the integer part of the result exceeds the maximum precision.
 //     This limit is set to [decimal.MaxPrec] digits.
@@ -293,9 +321,9 @@ func (a Amount) Rat(b Amount) decimal.Decimal {
 	return d.Quo(e)
 }
 
-// Split returns a slice of amounts that sum up to the original amount a.
-// The function ensures that the resulting parts are as equal as possible.
-// If a cannot be divided equally among the specified number of parts, the
+// Split returns a slice of amounts that sum up to the original amount,
+// ensuring the parts are as equal as possible.
+// If the original amount cannot be divided equally among the specified number of parts, the
 // remainder is distributed among the first parts of the slice.
 //
 // Split panics if the number of parts is not a positive integer.
@@ -321,37 +349,38 @@ func (a Amount) Split(n int) []Amount {
 	return res
 }
 
-// One returns amount with a value of 1, having the same currency and scale as a.
-// Also see method [Amount.ULP].
+// One returns an amount with a value of 1, having the same currency and scale as amount a.
+// See also method [Amount.ULP].
 func (a Amount) One() Amount {
 	d := a.value
 	return mustNewAmount(a.Curr(), d.One())
 }
 
-// Zero returns amount with a value of 0, having the same currency and scale as a.
+// Zero returns an amount with a value of 0, having the same currency and scale as amount a.
 func (a Amount) Zero() Amount {
 	d := a.value
 	return mustNewAmount(a.Curr(), d.Zero())
 }
 
-// ULP (Unit in the Last Place) returns the smallest representable positive
-// difference between a and the next larger amount with the same number
-// of digits. Also see method [Amount.One].
+// ULP (Unit in the Last Place) returns the smallest representable positive difference
+// between two amounts with the same scale as amount a.
+// It can be useful for implementing rounding and comparison algorithms.
+// See also method [Amount.One].
 func (a Amount) ULP() Amount {
 	d := a.value
 	return mustNewAmount(a.Curr(), d.ULP())
 }
 
-// Ceil returns a that is rounded up to the specified number of digits after
+// Ceil returns an amount rounded up to the specified number of digits after
 // the decimal point.
-// If the scale of a is less than the specified scale, the result will be
+// If the scale of the amount is less than the specified scale, the result will be
 // zero-padded to the right.
-// If specified scale is less than the scale of the currency then a will be
-// rounded up to the scale of the currency instead.
-// Also see method [Amount.CeilToCurr].
+// If the specified scale is less than the scale of the currency,
+// the amount will be rounded up to the scale of te currency instead.
+// See also method [Amount.CeilToCurr].
 //
-// Ceil panics if the integer part of the result exceeds the maximum precision.
-// This limit is calculated as ([decimal.MaxPrec] - scale).
+// Ceil panics if the integer part of the result exceeds the maximum precision,
+// calculated as ([decimal.MaxPrec] - scale).
 func (a Amount) Ceil(scale int) Amount {
 	if scale < a.Curr().Scale() {
 		scale = a.Curr().Scale()
@@ -360,22 +389,22 @@ func (a Amount) Ceil(scale int) Amount {
 	return mustNewAmount(a.Curr(), d.Ceil(scale))
 }
 
-// CeilToCurr returns a that is rounded up to the scale of its currency.
-// Also see method [Amount.SameScaleAsCurr].
+// CeilToCurr returns an amount rounded up to the scale of its currency.
+// See also method [Amount.SameScaleAsCurr].
 func (a Amount) CeilToCurr() Amount {
 	return a.Ceil(a.Curr().Scale())
 }
 
-// Floor returns a that is rounded down to the specified number of digits after
+// Floor returns an amount rounded down to the specified number of digits after
 // the decimal point.
-// If the scale of a is less than the specified scale, the result will be
-// zero-padded to the right.
-// If specified scale is less than the scale of the currency then a will be
+// If the scale of the amount is less than the specified scale,
+// the result will be zero-padded to the right.
+// If the specified scale is less than the scale of the currency, the amount will be
 // rounded down to the scale of the currency instead.
-// Also see method [Amount.FloorToCurr].
+// See also method [Amount.FloorToCurr].
 //
-// Floor panics if the integer part of the result exceeds the maximum precision.
-// This limit is calculated as ([decimal.MaxPrec] - scale).
+// Floor panics if the integer part of the result exceeds the maximum precision,
+// calculated as ([decimal.MaxPrec] - scale).
 func (a Amount) Floor(scale int) Amount {
 	if scale < a.Curr().Scale() {
 		scale = a.Curr().Scale()
@@ -384,22 +413,22 @@ func (a Amount) Floor(scale int) Amount {
 	return mustNewAmount(a.Curr(), d.Floor(scale))
 }
 
-// FloorToCurr returns a that is rounded down to the scale of its currency.
-// Also see method [Amount.SameScaleAsCurr].
+// FloorToCurr returns an amount rounded down to the scale of its currency.
+// See also method [Amount.SameScaleAsCurr].
 func (a Amount) FloorToCurr() Amount {
 	return a.Floor(a.Curr().Scale())
 }
 
-// Trunc returns a that is truncated to the specified number of digits after
+// Trunc returns an amount truncated to the specified number of digits after
 // the decimal point.
-// If the scale of a is less than the specified scale, the result will be
-// zero-padded to the right.
-// If specified scale is less than the scale of the currency then a will be
-// truncated to the scale of the currency instead.
-// Also see method [Amount.TruncToCurr].
+// If the scale of the amount is less than the specified scale,
+// the result will be zero-padded to the right.
+// If the specified scale is less than the scale of the currency,
+// the amount will be truncated to the scale of the currency instead.
+// See also method [Amount.TruncToCurr].
 //
-// Trunc panics if the integer part of the result exceeds the maximum precision.
-// This limit is calculated as ([decimal.MaxPrec] - scale).
+// Trunc panics if the integer part of the result exceeds the maximum precision,
+// calculated as ([decimal.MaxPrec] - scale).
 func (a Amount) Trunc(scale int) Amount {
 	if scale < a.Curr().Scale() {
 		scale = a.Curr().Scale()
@@ -408,22 +437,20 @@ func (a Amount) Trunc(scale int) Amount {
 	return mustNewAmount(a.Curr(), d.Trunc(scale))
 }
 
-// TruncToCurr returns a that is truncated to the scale of its currency.
-// Also see method [Amount.SameScaleAsCurr].
+// TruncToCurr returns an amount truncated to the scale of its currency.
+// See also method Amount.SameScaleAsCurr.
 func (a Amount) TruncToCurr() Amount {
 	return a.Trunc(a.Curr().Scale())
 }
 
-// Round returns amount that is rounded to the specified number of digits after
-// the decimal point.
-// If the scale of amount is less than the specified scale, the result will be
-// zero-padded to the right.
-// If specified scale is less than the scale of the currency then amount will be
-// rounded to the scale of the currency instead.
-// Also see method [Amount.RoundToCurr].
+// Round returns an amount rounded to the specified number of digits after
+// the decimal point. If the scale of the amount is less than the specified scale,
+// the result will be zero-padded to the right. If the specified scale is less than
+// the scale of the currency, the amount will be rounded to the currency's scale
+// instead. See also method Amount.RoundToCurr.
 //
-// Round panics if the integer part of the result exceeds the maximum precision.
-// This limit is calculated as ([decimal.MaxPrec] - scale).
+// Round panics if the integer part of the result exceeds the maximum precision,
+// calculated as ([decimal.MaxPrec] - scale).
 func (a Amount) Round(scale int) Amount {
 	if scale < a.Curr().Scale() {
 		scale = a.Curr().Scale()
@@ -432,22 +459,22 @@ func (a Amount) Round(scale int) Amount {
 	return mustNewAmount(a.Curr(), d.Round(scale))
 }
 
-// RoundToCurr returns amount that is rounded to the scale of its currency.
-// Also see method [Amount.SameScaleAsCurr].
+// RoundToCurr returns an amount rounded to the scale of its currency.
+// See also method [Amount.SameScaleAsCurr].
 func (a Amount) RoundToCurr() Amount {
 	return a.Round(a.Curr().Scale())
 }
 
-// Quantize returns a that is rounded to the same scale as b.
-// The sign and coefficient of b are ignored.
-// Also see method [Amount.Round].
+// Quantize returns an amount rounded to the same scale as amount b.
+// The sign and value of amount b are ignored.
+// See also method [Amount.Round].
 //
 // Quantize panics if:
-//   - the a and b are denominated in different currencies.
-//     To avoid this panic, use the [Amount.SameCurr] to verify that both amounts
+//   - amounts are denominated in different currencies.
+//     To avoid this panic, use [Amount.SameCurr] to verify that both amounts
 //     have the same currency before calling Quantize.
-//   - the integer part of the result exceeds the maximum precision.
-//     This limit is calculated as ([decimal.MaxPrec] - b.Scale()).
+//   - the integer part of the result exceeds the maximum precision,
+//     calculated as ([decimal.MaxPrec] - b.Scale()).
 func (a Amount) Quantize(b Amount) Amount {
 	if !a.SameCurr(b) {
 		panic(fmt.Sprintf("%q.Quantize(%q) failed: %v", a, b, errCurrencyMismatch))
@@ -455,28 +482,27 @@ func (a Amount) Quantize(b Amount) Amount {
 	return a.Round(b.Scale())
 }
 
-// SameCurr returns true if both a and b denomintated in the same currency.
-// Also see method [Amount.Curr].
+// SameCurr returns true if amounts are denominated in the same currency.
+// See also method [Amount.Curr].
 func (a Amount) SameCurr(b Amount) bool {
 	return a.Curr() == b.Curr()
 }
 
-// SameScale returns true if the numeric values of a and b have
-// the same scale.
-// Also see method [Amount.Scale].
+// SameScale returns true if amounts have the same scale.
+// See also method [Amount.Scale].
 func (a Amount) SameScale(b Amount) bool {
 	return a.Scale() == b.Scale()
 }
 
-// SameScaleAsCurr returns true if the scale of amount matches the scale of its currency.
-// Also see method [Amount.RoundToCurr].
+// SameScaleAsCurr returns true if the scale of the amount matches the scale of its currency.
+// See also method [Amount.RoundToCurr].
 func (a Amount) SameScaleAsCurr() bool {
 	return a.Scale() == a.Curr().Scale()
 }
 
-// String method implements the [fmt.Stringer] interface and returns a string
+// String implements the [fmt.Stringer] interface and returns a string
 // representation of an amount.
-// Also see methods [Currency.String] and [Decimal.String].
+// See also methods [Currency.String] and [Decimal.String].
 //
 // [fmt.Stringer]: https://pkg.go.dev/fmt#Stringer
 // [Decimal.String]: https://pkg.go.dev/github.com/govalues/decimal#Decimal.String
@@ -484,14 +510,14 @@ func (a Amount) String() string {
 	return a.Curr().String() + " " + a.value.String()
 }
 
-// Cmp compares a and b numerically and returns:
+// Cmp compares amounts numerically and returns:
 //
 //	-1 if a < b
 //	 0 if a == b
 //	+1 if a > b
 //
-// Cmp panics if the a and b are denominated in different currencies.
-// To avoid this panic, use the [Amount.SameCurr] to verify that both amounts
+// Cmp panics if amounts are denominated in different currencies.
+// To avoid this panic, use [Amount.SameCurr] to verify that both amounts
 // have the same currency before calling Cmp.
 func (a Amount) Cmp(b Amount) int {
 	if !a.SameCurr(b) {
@@ -502,19 +528,18 @@ func (a Amount) Cmp(b Amount) int {
 	return d.Cmp(e)
 }
 
-// CmpTotal compares representation of a and b and returns:
+// CmpTotal compares the representation of amounts and returns:
 //
 //	-1 if a < b
-//	-1 if a == b && a.scale > b.scale
+//	-1 if a == b && a.scale >  b.scale
 //	 0 if a == b && a.scale == b.scale
-//	+1 if a == b && a.scale < b.scale
+//	+1 if a == b && a.scale <  b.scale
 //	+1 if a > b
 //
-// CmpTotal panics if the a and b are denominated in different currencies.
-// To avoid this panic, use the [Amount.SameCurr] to verify that both amounts
+// CmpTotal panics if amounts are denominated in different currencies.
+// To avoid this panic, use [Amount.SameCurr] to verify that both amounts
 // have the same currency before calling CmpTotal.
-//
-// Also see method [Amount.Cmp].
+// See also method [Amount.Cmp].
 func (a Amount) CmpTotal(b Amount) int {
 	if !a.SameCurr(b) {
 		panic(fmt.Sprintf("%q.CmpTotal(%q) failed: %v", a, b, errCurrencyMismatch))
@@ -524,11 +549,11 @@ func (a Amount) CmpTotal(b Amount) int {
 	return d.CmpTotal(e)
 }
 
-// Min returns minimum of a and b.
-// Also see method [Amount.CmpTotal].
+// Min returns the smaller amount.
+// See also method [Amount.CmpTotal].
 //
-// Min panics if the a and b are denominated in different currencies.
-// To avoid this panic, use the [Amount.SameCurr] to verify that both amounts
+// Min panics if amounts are denominated in different currencies.
+// To avoid this panic, use [Amount.SameCurr] to verify that both amounts
 // have the same currency before calling Min.
 func (a Amount) Min(b Amount) Amount {
 	if !a.SameCurr(b) {
@@ -539,11 +564,11 @@ func (a Amount) Min(b Amount) Amount {
 	return mustNewAmount(a.Curr(), d.Min(e))
 }
 
-// Max returns maximum of a and b.
-// Also see method [Amount.CmpTotal].
+// Max returns the larger amount.
+// See also method [Amount.CmpTotal].
 //
-// Min panics if the a and b are denominated in different currencies.
-// To avoid this panic, use the [Amount.SameCurr] to verify that both amounts
+// Max panics if amounts are denominated in different currencies.
+// To avoid this panic, use [Amount.SameCurr] to verify that both amounts
 // have the same currency before calling Max.
 func (a Amount) Max(b Amount) Amount {
 	if !a.SameCurr(b) {
@@ -554,13 +579,13 @@ func (a Amount) Max(b Amount) Amount {
 	return mustNewAmount(a.Curr(), d.Max(e))
 }
 
-// Format implements [fmt.Formatter] interface.
+// Format implements the [fmt.Formatter] interface.
 // The following [format verbs] are available:
 //
 //	%s, %v: USD -123.456
 //	%q:    "USD -123.456"
-//	%f:     -123.46
-//	%d:     -12346
+//	%f:    -123.46
+//	%d:    -12346
 //	%c:     USD
 //
 // The '-' format flag can be used with all verbs.
@@ -568,8 +593,6 @@ func (a Amount) Max(b Amount) Amount {
 //
 // Precision is only supported for the %f verb.
 // The default precision is equal to the scale of the currency.
-//
-// See the test cases for examples of various formatting options.
 //
 // [format verbs]: https://pkg.go.dev/fmt#hdr-Printing
 // [fmt.Formatter]: https://pkg.go.dev/fmt#Formatter
