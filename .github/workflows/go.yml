@@ -25,7 +25,7 @@ jobs:
       run: gofmt -s -w . && git diff --exit-code
       
     - name: Verify dependency consistency
-      run: go mod tidy && git diff --exit-code
+      run: go get -u -t . && go mod tidy && git diff --exit-code
 
     - name: Verify generated code
       run: go generate ./... && git diff --exit-code
@@ -34,7 +34,7 @@ jobs:
       run: go vet ./...
       
     - name: Run tests with coverage
-      run: go test -v -count=1 -race -shuffle=on -coverprofile=coverage.txt -covermode=atomic ./...
+      run: go test -race -shuffle=on -coverprofile="coverage.txt" -covermode=atomic ./...
 
     - name: Upload test coverage
       uses: codecov/codecov-action@v3
