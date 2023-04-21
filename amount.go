@@ -42,6 +42,8 @@ func mustNewAmount(curr Currency, amount decimal.Decimal) Amount {
 }
 
 // ParseAmount converts currency and decimal strings to (possibly rounded) amount.
+// If the scale of the amount is less than the scale of the currency, the result
+// will be zero-padded to the right.
 // See also methods [ParseCurr] and [decimal.Parse].
 func ParseAmount(curr, amount string) (Amount, error) {
 	c, err := ParseCurr(curr)
@@ -100,9 +102,10 @@ func (a Amount) Float64() (f float64, ok bool) {
 	return a.value.Float64()
 }
 
-// Int64 returns a pair of int64 values, where the first represents
-// the integer part and the second represents the fractional part of the amount,
-// such that a = i + f / 10^scale.
+// Int64 returns a pair of int64 values representing the integer part i and the
+// fractional part f of the amount.
+// The relationship can be expressed as a = i + f / 10^scale, where the scale
+// can be obtained using the [Amount.Scale] method.
 // If the result cannot be accurately represented as a pair of int64 values,
 // the method returns false.
 func (a Amount) Int64() (i int64, f int64, ok bool) {

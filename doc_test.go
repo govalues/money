@@ -341,7 +341,7 @@ func ExampleAmount_Float64() {
 
 func ExampleAmount_Int64() {
 	a := money.MustParseAmount("JPY", "100")
-	b := money.MustParseAmount("USD", "15.6")
+	b := money.MustParseAmount("USD", "15.60")
 	c := money.MustParseAmount("OMR", "2.389")
 	fmt.Println(a.Int64())
 	fmt.Println(b.Int64())
