@@ -2,9 +2,10 @@ package money
 
 import (
 	"fmt"
-	"github.com/govalues/decimal"
 	"testing"
 	"unsafe"
+
+	"github.com/govalues/decimal"
 )
 
 func TestExchangeRate_ZeroValue(t *testing.T) {
@@ -59,8 +60,7 @@ func TestNewExchRate(t *testing.T) {
 }
 
 func TestParseExchRate(t *testing.T) {
-
-	t.Run("valid", func(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
 		tests := []struct {
 			base, quote, rate   string
 			wantBase, wantQuote Currency
@@ -72,7 +72,11 @@ func TestParseExchRate(t *testing.T) {
 			{"USD", "OMR", "0.38", USD, OMR, 38000, 5},
 		}
 		for _, tt := range tests {
-			rate := decimal.New(tt.wantCoef, tt.wantScale)
+			rate, err := decimal.New(tt.wantCoef, tt.wantScale)
+			if err != nil {
+				t.Errorf("decimal.New(%v, %v) failed: %v", tt.wantCoef, tt.wantScale, err)
+				continue
+			}
 			want, err := NewExchRate(tt.wantBase, tt.wantQuote, rate)
 			if err != nil {
 				t.Errorf("NewExchRate(%v, %v, %v) failed: %v", tt.wantBase, tt.wantQuote, rate, err)
@@ -111,8 +115,7 @@ func TestParseExchRate(t *testing.T) {
 }
 
 func TestExchangeRate_Mul(t *testing.T) {
-
-	t.Run("valid", func(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
 		tests := []struct {
 			base, quote, rate, factor, want string
 		}{
@@ -132,14 +135,18 @@ func TestExchangeRate_Mul(t *testing.T) {
 			r := MustParseExchRate(tt.base, tt.quote, tt.rate)
 			e := decimal.MustParse(tt.factor)
 			want := MustParseExchRate(tt.base, tt.quote, tt.want)
-			got := r.Mul(e)
+			got, err := r.Mul(e)
+			if err != nil {
+				t.Errorf("%q.Mul(%q) failed: %v", r, e, err)
+				continue
+			}
 			if got != want {
 				t.Errorf("%q.Mul(%q) = %q, want %q", r, e, got, want)
 			}
 		}
 	})
 
-	t.Run("panic", func(t *testing.T) {
+	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
 			base, quote, rate, factor string
 		}{
@@ -148,24 +155,19 @@ func TestExchangeRate_Mul(t *testing.T) {
 			"factor 1":   {"USD", "EUR", "0.9", "0.0"},
 			"factor 2":   {"USD", "EUR", "0.9", "-0.1"},
 		}
-		for name, tt := range tests {
+		for _, tt := range tests {
 			a := MustParseExchRate(tt.base, tt.quote, tt.rate)
 			e := decimal.MustParse(tt.factor)
-			t.Run(name, func(t *testing.T) {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Errorf("%q.Mul(%q) did not panic", a, e)
-					}
-				}()
-				a.Mul(e)
-			})
+			_, err := a.Mul(e)
+			if err == nil {
+				t.Errorf("%q.Mul(%q) did not fail", a, e)
+			}
 		}
 	})
 }
 
 func TestExchangeRate_Inv(t *testing.T) {
-
-	t.Run("valid", func(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
 		tests := []struct {
 			base, quote, rate, want string
 		}{
@@ -174,21 +176,23 @@ func TestExchangeRate_Inv(t *testing.T) {
 		for _, tt := range tests {
 			r := MustParseExchRate(tt.base, tt.quote, tt.rate)
 			want := MustParseExchRate(tt.quote, tt.base, tt.want)
-			got := r.Inv()
+			got, err := r.Inv()
+			if err != nil {
+				t.Errorf("%q.Inv() failed: %v", r, err)
+				continue
+			}
 			if got != want {
 				t.Errorf("%q.Inv() = %q, want %q", r, got, want)
 			}
 		}
 	})
 
-	t.Run("panic", func(t *testing.T) {
+	t.Run("error", func(t *testing.T) {
 		q := ExchangeRate{}
-		defer func() {
-			if r := recover(); r == nil {
-				t.Errorf("%q.Inv() did not panic", q)
-			}
-		}()
-		q.Inv()
+		_, err := q.Inv()
+		if err == nil {
+			t.Errorf("%q.Inv() did not fail", q)
+		}
 	})
 }
 
@@ -215,8 +219,7 @@ func TestExchangeRate_SameScaleAsCurr(t *testing.T) {
 }
 
 func TestExchangeRate_Conv(t *testing.T) {
-
-	t.Run("valid", func(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
 		tests := []struct {
 			base, quote, rate, amount, want string
 		}{
@@ -228,14 +231,18 @@ func TestExchangeRate_Conv(t *testing.T) {
 			r := MustParseExchRate(tt.base, tt.quote, tt.rate)
 			a := MustParseAmount(tt.base, tt.amount)
 			want := MustParseAmount(tt.quote, tt.want)
-			got := r.Conv(a)
+			got, err := r.Conv(a)
+			if err != nil {
+				t.Errorf("%q.Conv(%q) failed: %v", r, a, err)
+				continue
+			}
 			if got != want {
 				t.Errorf("%q.Conv(%q) = %q, want %q", r, a, got, want)
 			}
 		}
 	})
 
-	t.Run("panic", func(t *testing.T) {
+	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
 			base, quote, rate, curr, amount string
 		}{
@@ -245,17 +252,13 @@ func TestExchangeRate_Conv(t *testing.T) {
 			"overflow 2": {"USD", "EUR", "10.0000", "USD", "10000000000000000.00"},
 			"overflow 3": {"USD", "OMR", "10.00000", "USD", "1000000000000000.00"},
 		}
-		for name, tt := range tests {
+		for _, tt := range tests {
 			r := MustParseExchRate(tt.base, tt.quote, tt.rate)
 			a := MustParseAmount(tt.curr, tt.amount)
-			t.Run(name, func(t *testing.T) {
-				defer func() {
-					if e := recover(); e == nil {
-						t.Errorf("%q.Conv(%q) did not panic", r, a)
-					}
-				}()
-				r.Conv(a)
-			})
+			_, err := r.Conv(a)
+			if err == nil {
+				t.Errorf("%q.Conv(%q) did not fail", r, a)
+			}
 		}
 	})
 }

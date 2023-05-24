@@ -1,3 +1,4 @@
+// gen is used to autogenerate currency_data.go.
 package main
 
 import (
@@ -13,14 +14,13 @@ import (
 	"text/template"
 )
 
-type Currency struct {
+type currency struct {
 	Name  string
 	Code  string
 	Num   string
 	Scale string
 }
 
-// This code is used to autogenerate currency_data.go.
 func main() {
 	// Open the input file and read its contents
 	data, err := readCsvFile(filepath.Join("scripts", "currency", "currency_data.csv"))
@@ -50,7 +50,7 @@ func readCsvFile(filename string) ([][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	// Read the CSV records
 	reader := csv.NewReader(in)
@@ -66,7 +66,7 @@ func readCsvFile(filename string) ([][]string, error) {
 	return recs, nil
 }
 
-func convertDataToCurrencies(data [][]string) []Currency {
+func convertDataToCurrencies(data [][]string) []currency {
 	// Sort the CSV records by currency code
 	less := func(i, j int) bool {
 		a := data[i][1]
@@ -82,9 +82,9 @@ func convertDataToCurrencies(data [][]string) []Currency {
 	sort.Slice(data, less)
 
 	// Convert the CSV records to Currency objects
-	currs := []Currency{}
+	currs := []currency{}
 	for _, rec := range data {
-		curr := Currency{
+		curr := currency{
 			Name:  rec[0],
 			Code:  rec[1],
 			Num:   rec[2],
@@ -95,7 +95,7 @@ func convertDataToCurrencies(data [][]string) []Currency {
 	return currs
 }
 
-func generateGoCode(filename string, currs []Currency) ([]byte, error) {
+func generateGoCode(filename string, currs []currency) ([]byte, error) {
 	// Create a new template object from the template file
 	fmap := template.FuncMap{
 		"lower": strings.ToLower,
@@ -126,7 +126,7 @@ func writeToFile(filename string, content []byte) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	writer := bufio.NewWriter(out)
 	_, err = writer.Write(content)
 	if err != nil {

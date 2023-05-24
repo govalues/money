@@ -29,11 +29,11 @@ import (
 ## Using Amount
 
 To create a new amount, you can use one of the provided constructors,
-such as `NewAmount`, `ParseAmount` or `MustParseAmount`.
+such as `NewAmount`, `MustNewAmount`, `ParseAmount` or `MustParseAmount`.
 
 ```go
-d := decimal.New(12345, 2)                  // d = 123.45
-a, _ := money.NewAmount(money.USD, d)       // a = USD 123.45
+d := decimal.MustNew(12345, 2)              // d = 123.45
+a := money.MustNewAmount(money.USD, d)      // a = USD 123.45
 b := money.MustParseAmount("USD", "123.45") // b = USD 123.45
 ```
 
@@ -42,15 +42,15 @@ addition, subtraction, multiplication, division, as well
 as rounding operations such as ceiling, floor, truncation, and rounding.
 
 ```go
-sum := a.Add(b)
-difference := a.Sub(b)
-product := a.Mul(d)
-quotient := a.Quo(d)
-ratio := a.Rat(b)
-ceil := a.Ceil(2)
-floor := a.Floor(2)
-trunc := a.Trunc(2)
-round := a.Round(2)
+sum, _ := a.Add(b)
+difference, _ := a.Sub(b)
+product, _ := a.Mul(d)
+quotient, _ := a.Quo(d)
+ratio, _ := a.Rat(b)
+ceil, _ := a.Ceil(2)
+floor, _ := a.Floor(2)
+trunc, _ := a.Trunc(2)
+round, _ := a.Round(2)
 ```
 
 For more details on these and other methods, see the package documentation at [pkg.go.dev](https://pkg.go.dev/github.com/govalues/money).

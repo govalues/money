@@ -2,6 +2,7 @@ package money
 
 import (
 	"fmt"
+
 	"github.com/govalues/decimal"
 )
 
@@ -16,6 +17,8 @@ type ExchangeRate struct {
 }
 
 // NewExchRate returns a new exchange rate between the base and quote currencies.
+// If the scale of the rate is less than the sum of the scales of its base and
+// quote currencies, the result will be zero-padded to the right.
 func NewExchRate(base, quote Currency, rate decimal.Decimal) (ExchangeRate, error) {
 	if !rate.IsPos() {
 		return ExchangeRate{}, fmt.Errorf("exchange rate must be positive")
@@ -24,23 +27,18 @@ func NewExchRate(base, quote Currency, rate decimal.Decimal) (ExchangeRate, erro
 		return ExchangeRate{}, fmt.Errorf("exchange rate must be equal to 1")
 	}
 	if rate.Scale() < base.Scale()+quote.Scale() {
-		if rate.Prec()-rate.Scale() > decimal.MaxPrec-base.Scale()-quote.Scale() {
-			return ExchangeRate{}, fmt.Errorf("with a pair of currencies %v/%v, the integer part of a %T can have at most %v digit(s), but it has %v digit(s)", base, quote, ExchangeRate{}, decimal.MaxPrec-base.Scale()-quote.Scale(), rate.Prec()-rate.Scale())
+		var err error
+		rate, err = rate.Round(base.Scale() + quote.Scale())
+		if err != nil {
+			return ExchangeRate{}, fmt.Errorf("exchange rate rescaling: %w", err)
 		}
-		rate = rate.Round(base.Scale() + quote.Scale())
 	}
 	return ExchangeRate{base: base, quote: quote, value: rate}, nil
 }
 
-func mustNewExchRate(base, quote Currency, rate decimal.Decimal) ExchangeRate {
-	r, err := NewExchRate(base, quote, rate)
-	if err != nil {
-		panic(fmt.Sprintf("NewExchRate(%v, %v, %v) failed: %v", base, quote, rate, err))
-	}
-	return r
-}
-
 // ParseExchRate converts currency and decimal strings to a (possibly rounded) exchange rate.
+// If the scale of the rate is less than the sum of the scales of its base and
+// quote currencies, the result will be zero-padded to the right.
 // See also methods [ParseCurr] and [decimal.Parse].
 func ParseExchRate(base, quote, rate string) (ExchangeRate, error) {
 	b, err := ParseCurr(base)
@@ -85,16 +83,17 @@ func (r ExchangeRate) Quote() Currency {
 // Mul returns an exchange rate with the same base and quote currencies,
 // but with the rate multiplied by a positive factor e.
 //
-// Mul panics if factor e is not positive.
-// To avoid this panic, use the [decimal.Decimal.IsPos] to verify that decimal
-// is positive before calling Mul.
-func (r ExchangeRate) Mul(e decimal.Decimal) ExchangeRate {
+// Mul returns an error if factor e is not positive.
+func (r ExchangeRate) Mul(e decimal.Decimal) (ExchangeRate, error) {
 	if !e.IsPos() {
-		panic(fmt.Sprintf("%q.Mul(%q) failed: factor must be postitve", r, e))
+		return ExchangeRate{}, fmt.Errorf("negative factor")
 	}
 	d := r.value
-	f := d.MulExact(e, r.Base().Scale()+r.Quote().Scale())
-	return mustNewExchRate(r.Base(), r.Quote(), f)
+	f, err := d.MulExact(e, r.Base().Scale()+r.Quote().Scale())
+	if err != nil {
+		return ExchangeRate{}, fmt.Errorf("exchange rate multiplication: %w", err)
+	}
+	return NewExchRate(r.Base(), r.Quote(), f)
 }
 
 // CanConv returns true if [ExchangeRate.Conv] can be used to convert the given amount.
@@ -107,28 +106,32 @@ func (r ExchangeRate) CanConv(b Amount) bool {
 
 // Conv returns the amount converted from the base currency to the quote currency.
 //
-// Conv panics if the base currency of the exchange rate does not match
+// Conv returns an error if the base currency of the exchange rate does not match
 // the currency of the given amount.
-// To avoid this panic, use the [ExchangeRate.CanConv] method to ensure
-// the currencies are compatible before calling Conv.
-func (r ExchangeRate) Conv(b Amount) Amount {
+func (r ExchangeRate) Conv(b Amount) (Amount, error) {
 	if !r.CanConv(b) {
-		panic(fmt.Sprintf("%q.Conv(%q) failed: %v", r, b, errCurrencyMismatch))
+		return Amount{}, errCurrencyMismatch
 	}
-	d := r.value
-	e := b.value
-	f := d.MulExact(e, r.Quote().Scale())
-	return mustNewAmount(r.Quote(), f)
+	d, e := r.value, b.value
+	f, err := d.MulExact(e, r.Quote().Scale())
+	if err != nil {
+		return Amount{}, fmt.Errorf("exchange rate conversion: %w", err)
+	}
+	return NewAmount(r.Quote(), f)
 }
 
 // Inv returns the inverse of the exchange rate.
-func (r ExchangeRate) Inv() ExchangeRate {
+func (r ExchangeRate) Inv() (ExchangeRate, error) {
 	d := r.value
 	if d.IsZero() {
-		panic(fmt.Sprintf("%q.Inv() failed: zero rate does not have an inverse: %v", r, errDivisionByZero))
+		return ExchangeRate{}, fmt.Errorf("zero rate does not have an inverse: %w", errDivisionByZero)
 	}
 	one := d.One()
-	return mustNewExchRate(r.Quote(), r.Base(), one.Quo(d))
+	d, err := one.Quo(d)
+	if err != nil {
+		return ExchangeRate{}, fmt.Errorf("exchange rate inversion: %w", err)
+	}
+	return NewExchRate(r.Quote(), r.Base(), d)
 }
 
 // SameCurr returns true if exchange rates are denominated in the same base
@@ -193,20 +196,24 @@ func (r ExchangeRate) WithinOne() bool {
 // currency then the exchange rate will be rounded to the sum of scales instead.
 // See also method [ExchangeRate.RoundToCurr].
 //
-// Round panics if the integer part of the result exceeds the maximum precision.
+// Round returns an error if the integer part of the result exceeds the maximum precision.
 // This limit is calculated as ([decimal.MaxPrec] - scale).
-func (r ExchangeRate) Round(scale int) ExchangeRate {
+func (r ExchangeRate) Round(scale int) (ExchangeRate, error) {
 	if scale < r.Base().Scale()+r.Quote().Scale() {
 		scale = r.Base().Scale() + r.Quote().Scale()
 	}
 	d := r.value
-	return mustNewExchRate(r.Base(), r.Quote(), d.Round(scale))
+	d, err := d.Round(scale)
+	if err != nil {
+		return ExchangeRate{}, fmt.Errorf("exchange rate rounding: %w", err)
+	}
+	return NewExchRate(r.Base(), r.Quote(), d)
 }
 
 // RoundToCurr returns an exchange rate that is rounded to the sum of the scales of its base
 // and quote currencies.
 // See also method [ExchangeRate.SameScaleAsCurr].
-func (r ExchangeRate) RoundToCurr() ExchangeRate {
+func (r ExchangeRate) RoundToCurr() (ExchangeRate, error) {
 	return r.Round(r.Base().Scale() + r.Quote().Scale())
 }
 
@@ -238,6 +245,7 @@ func (r ExchangeRate) String() string {
 // [fmt.Formatter]: https://pkg.go.dev/fmt#Formatter
 func (r ExchangeRate) Format(state fmt.State, verb rune) {
 	// Rescaling
+	var err error
 	tzeroes := 0
 	if verb == 'f' || verb == 'F' {
 		scale := 0
@@ -254,7 +262,10 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 			tzeroes = scale - r.Scale()
 			scale = r.Scale()
 		}
-		r = r.Round(scale)
+		r, err = r.Round(scale)
+		if err != nil {
+			panic(err) // this panic is handled by the standard library
+		}
 	}
 
 	// Integer and fractional digits
