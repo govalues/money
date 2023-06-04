@@ -2,261 +2,404 @@ package money_test
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/govalues/decimal"
 	"github.com/govalues/money"
-	"strconv"
 )
+
+func TaxAmount(priceAfterTax money.Amount, taxRate decimal.Decimal) (money.Amount, money.Amount, error) {
+	// Price
+	one := taxRate.One()
+	taxRate, err := taxRate.Add(one)
+	if err != nil {
+		return money.Amount{}, money.Amount{}, err
+	}
+
+	priceBeforeTax, err := priceAfterTax.Quo(taxRate)
+	if err != nil {
+		return money.Amount{}, money.Amount{}, err
+	}
+	priceBeforeTax = priceBeforeTax.RoundToCurr()
+
+	// Tax Amount
+	taxAmount, err := priceAfterTax.Sub(priceBeforeTax)
+	if err != nil {
+		return money.Amount{}, money.Amount{}, err
+	}
+
+	return priceBeforeTax, taxAmount, nil
+}
 
 // In this example, the sales tax amount is calculated for a product with
 // a given price after tax, using a specified tax rate.
 func Example_taxCalculation() {
-	one := decimal.New(1, 0)
 	priceAfterTax := money.MustParseAmount("USD", "10")
-	taxRate := decimal.MustParse("0.065")
-	priceBeforeTax := priceAfterTax.Quo(one.Add(taxRate)).RoundToCurr()
-	salesTax := priceAfterTax.Sub(priceBeforeTax)
+	vatRate := decimal.MustParse("0.065")
+
+	priceBeforeTax, vatAmount, err := TaxAmount(priceAfterTax, vatRate)
+	if err != nil {
+		panic(err)
+	}
+
 	fmt.Printf("Price (before tax) = %v\n", priceBeforeTax)
-	fmt.Printf("Tax Rate           = %k\n", taxRate)
-	fmt.Printf("Sales Tax          = %v\n", salesTax)
+	fmt.Printf("VAT %-6k         = %v\n", vatRate, vatAmount)
 	fmt.Printf("Price (after tax)  = %v\n", priceAfterTax)
+
 	// Output:
 	// Price (before tax) = USD 9.39
-	// Tax Rate           = 6.5%
-	// Sales Tax          = USD 0.61
+	// VAT 6.5%           = USD 0.61
 	// Price (after tax)  = USD 10.00
 }
 
 type StatementLine struct {
 	Month    int
 	Days     int
-	Incoming money.Amount
 	Interest money.Amount
-	Outgoing money.Amount
+	Balance  money.Amount
 }
 
 type Statement []StatementLine
 
-func NewStatement(month, days int, balance money.Amount) Statement {
-	return Statement{{month, days, balance, balance.Zero(), balance}}
-}
-
-func (s Statement) IncomingBalance() money.Amount {
-	return s[0].Incoming
-}
-
-func (s Statement) OutgoingBalance() money.Amount {
-	return s[len(s)-1].Outgoing
-}
-
-func (s Statement) PercChange() decimal.Decimal {
-	return s.OutgoingBalance().Sub(s.IncomingBalance()).Rat(s.IncomingBalance())
-}
-
-func (s Statement) Append(month, days int, interest money.Amount) Statement {
+func (s Statement) Append(month, days int, interest, balance money.Amount) Statement {
 	line := StatementLine{
 		Month:    month,
 		Days:     days,
-		Incoming: s.OutgoingBalance(),
 		Interest: interest,
-		Outgoing: s.OutgoingBalance().Add(interest),
-	}
-	if len(s) == 1 && s[0].Interest.IsZero() {
-		return Statement{line}
+		Balance:  balance,
 	}
 	return append(s, line)
 }
 
-func (s Statement) TotalInterest() money.Amount {
+func (s Statement) IncomingBalance() (money.Amount, error) {
 	if len(s) == 0 {
-		return money.Amount{}
+		return money.Amount{}, fmt.Errorf("empty statement")
 	}
-	total := s[0].Interest
-	for i := 1; i < len(s); i++ {
-		total = total.Add(s[i].Interest)
+	a, err := s[0].Balance.Sub(s[0].Interest)
+	if err != nil {
+		return money.Amount{}, err
 	}
-	return total
+	return a, nil
 }
 
-func DailyRate(yearlyRate decimal.Decimal) decimal.Decimal {
-	daysInYear := decimal.New(365, 0)
+func (s Statement) OutgoingBalance() (money.Amount, error) {
+	if len(s) == 0 {
+		return money.Amount{}, fmt.Errorf("empty statement")
+	}
+	return s[len(s)-1].Balance, nil
+}
+
+// PercChange method calculates (OutgoingBalance - IncomingBalance) / IncomingBalance
+func (s Statement) PercChange() (decimal.Decimal, error) {
+	start, err := s.IncomingBalance()
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	end, err := s.OutgoingBalance()
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	delta, err := end.Sub(start)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	ratio, err := delta.Rat(start)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	return ratio, nil
+}
+
+func (s Statement) TotalInterest() (money.Amount, error) {
+	if len(s) == 0 {
+		return money.Amount{}, fmt.Errorf("empty statement")
+	}
+	var err error
+	total := s[0].Interest
+	for i := 1; i < len(s); i++ {
+		total, err = total.Add(s[i].Interest)
+		if err != nil {
+			return money.Amount{}, err
+		}
+	}
+	return total, nil
+}
+
+func DailyRate(yearlyRate decimal.Decimal) (decimal.Decimal, error) {
+	daysInYear := decimal.MustNew(365, 0)
 	return yearlyRate.Quo(daysInYear)
 }
 
-func SimulateStatement(balance money.Amount, yearlyRate decimal.Decimal) Statement {
-	daysInMonths := [...]int{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
-	dailyRate := DailyRate(yearlyRate)
-	statement := NewStatement(0, 0, balance)
-	for m := 0; m < len(daysInMonths); m++ {
-		interestAccumulated := balance.Zero()
-		for i := 0; i < daysInMonths[m]; i++ {
-			interestAccumulated = balance.FMA(dailyRate, interestAccumulated)
+func MonthlyInterest(balance money.Amount, dailyRate decimal.Decimal, daysInMonth int) (money.Amount, error) {
+	var err error
+	interest := balance.Zero()
+	for i := 0; i < daysInMonth; i++ {
+		interest, err = balance.FMA(dailyRate, interest)
+		if err != nil {
+			return money.Amount{}, err
 		}
-		interestAccumulated = interestAccumulated.RoundToCurr()
-		statement = statement.Append(m+1, daysInMonths[m], interestAccumulated)
-		balance = balance.Add(interestAccumulated)
 	}
-	return statement
+	return interest.RoundToCurr(), nil
+}
+
+func SimulateStatement(balance money.Amount, yearlyRate decimal.Decimal) (Statement, error) {
+	daysInMonths := [...]int{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+	dailyRate, err := DailyRate(yearlyRate)
+	if err != nil {
+		return nil, err
+	}
+	statement := Statement{}
+	for m := 0; m < len(daysInMonths); m++ {
+		// Compute the interest
+		interest, err := MonthlyInterest(balance, dailyRate, daysInMonths[m])
+		if err != nil {
+			return nil, err
+		}
+		// Compound the balance
+		balance, err = balance.Add(interest)
+		if err != nil {
+			return nil, err
+		}
+		// Append month
+		statement = statement.Append(m+1, daysInMonths[m], interest, balance)
+	}
+	return statement, nil
 }
 
 // This example calculates the effective interest rate for a 10% nominal
 // interest rate compounded monthly on a USD 10,000 balance.
 func Example_effectiveRate() {
-
-	// Parameters
-	balance := money.MustParseAmount("USD", "10000")
+	// Set up initial balance and nominal interest rate
+	initialBalance := money.MustParseAmount("USD", "10000")
 	nominalRate := decimal.MustParse("0.10")
 
-	// Calculate statement
-	statement := SimulateStatement(balance, nominalRate)
+	// Display initial balance and nominal interest rate
+	fmt.Printf("Initial Balance = %v\n", initialBalance)
+	fmt.Printf("Nominal Rate    = %.2k\n\n", nominalRate)
+	fmt.Printf("Month Days  Interest     Balance\n")
 
-	// Print header
-	fmt.Printf("Nominal Rate = %.2k, Effective Rate = %.4k\n\n", nominalRate, statement.PercChange())
-	fmt.Printf("Month Days  Incoming    Interest     Outgoing\n")
-
-	// Print statement lines
-	for _, line := range statement {
-		fmt.Printf(
-			"%5v %5v %11f %+11f %11f\n",
-			line.Month, line.Days,
-			line.Incoming, line.Interest,
-			line.Outgoing)
+	// Generate the simulated statement for a year
+	statement, err := SimulateStatement(initialBalance, nominalRate)
+	if err != nil {
+		panic(err)
 	}
 
-	// Print total
-	fmt.Printf("                  Total %+11f\n",
-		statement.TotalInterest())
+	// Display monthly balances, including the interest accrued each month
+	for _, line := range statement {
+		fmt.Printf("%5v %5v %+11f %11f\n", line.Month, line.Days, line.Interest, line.Balance)
+	}
+
+	// Calculate total interest accrued over the year and effective interest rate
+	totalInterest, err := statement.TotalInterest()
+	if err != nil {
+		panic(err)
+	}
+	effRate, err := statement.PercChange()
+	if err != nil {
+		panic(err)
+	}
+
+	// Display the total interest accrued and the effective interest rate
+	fmt.Printf("      Total %+11f\n\n", totalInterest)
+	fmt.Printf("Effective Rate = %.4k\n", effRate)
 
 	// Output:
-	// Nominal Rate = 10.00%, Effective Rate = 10.4713%
+	// Initial Balance = USD 10000.00
+	// Nominal Rate    = 10.00%
 	//
-	// Month Days  Incoming    Interest     Outgoing
-	//     1    31    10000.00      +84.93    10084.93
-	//     2    28    10084.93      +77.36    10162.29
-	//     3    31    10162.29      +86.31    10248.60
-	//     4    30    10248.60      +84.24    10332.84
-	//     5    31    10332.84      +87.76    10420.60
-	//     6    30    10420.60      +85.65    10506.25
-	//     7    31    10506.25      +89.23    10595.48
-	//     8    31    10595.48      +89.99    10685.47
-	//     9    30    10685.47      +87.83    10773.30
-	//    10    31    10773.30      +91.50    10864.80
-	//    11    30    10864.80      +89.30    10954.10
-	//    12    31    10954.10      +93.03    11047.13
-	//                   Total    +1047.13
+	// Month Days  Interest     Balance
+	//     1    31      +84.93    10084.93
+	//     2    28      +77.36    10162.29
+	//     3    31      +86.31    10248.60
+	//     4    30      +84.24    10332.84
+	//     5    31      +87.76    10420.60
+	//     6    30      +85.65    10506.25
+	//     7    31      +89.23    10595.48
+	//     8    31      +89.99    10685.47
+	//     9    30      +87.83    10773.30
+	//    10    31      +91.50    10864.80
+	//    11    30      +89.30    10954.10
+	//    12    31      +93.03    11047.13
+	//       Total    +1047.13
+	//
+	// Effective Rate = 10.4713%
 }
 
 type ScheduleLine struct {
-	Month       int
-	Repayment   money.Amount
-	Principal   money.Amount
-	Interest    money.Amount
-	Outstanding money.Amount
+	Month     int
+	Repayment money.Amount
+	Principal money.Amount
+	Interest  money.Amount
+	Balance   money.Amount
 }
 
 type AmortizationSchedule []ScheduleLine
 
-func (p AmortizationSchedule) Append(month int, repayment, principal, interest, outstanding money.Amount) AmortizationSchedule {
+func (p AmortizationSchedule) Append(month int, repayment, principal, interest, balance money.Amount) AmortizationSchedule {
 	newLine := ScheduleLine{
-		Month:       month,
-		Repayment:   repayment,
-		Principal:   principal,
-		Interest:    interest,
-		Outstanding: outstanding,
+		Month:     month,
+		Repayment: repayment,
+		Principal: principal,
+		Interest:  interest,
+		Balance:   balance,
 	}
 	return append(p, newLine)
 }
 
-func (p AmortizationSchedule) TotalRepayment() money.Amount {
+func (p AmortizationSchedule) TotalRepayment() (money.Amount, error) {
 	if len(p) == 0 {
-		return money.Amount{}
+		return money.Amount{}, fmt.Errorf("empty schedule")
 	}
+	var err error
 	total := p[0].Repayment
 	for i := 1; i < len(p); i++ {
-		total = total.Add(p[i].Repayment)
+		total, err = total.Add(p[i].Repayment)
+		if err != nil {
+			return money.Amount{}, err
+		}
 	}
-	return total
+	return total, nil
 }
 
-func (p AmortizationSchedule) TotalPrincipal() money.Amount {
+func (p AmortizationSchedule) TotalPrincipal() (money.Amount, error) {
 	if len(p) == 0 {
-		return money.Amount{}
+		return money.Amount{}, fmt.Errorf("empty schedule")
 	}
+	var err error
 	total := p[0].Principal
 	for i := 1; i < len(p); i++ {
-		total = total.Add(p[i].Principal)
+		total, err = total.Add(p[i].Principal)
+		if err != nil {
+			return money.Amount{}, err
+		}
 	}
-	return total
+	return total, nil
 }
 
-func (p AmortizationSchedule) TotalInterest() money.Amount {
+func (p AmortizationSchedule) TotalInterest() (money.Amount, error) {
 	if len(p) == 0 {
-		return money.Amount{}
+		return money.Amount{}, fmt.Errorf("empty schedule")
 	}
+	var err error
 	total := p[0].Interest
 	for i := 1; i < len(p); i++ {
-		total = total.Add(p[i].Interest)
+		total, err = total.Add(p[i].Interest)
+		if err != nil {
+			return money.Amount{}, err
+		}
 	}
-	return total
+	return total, nil
 }
 
-func MonthlyRate(yearlyRate decimal.Decimal) decimal.Decimal {
-	monthsInYear := decimal.New(12, 0)
-	return yearlyRate.Quo(monthsInYear).Round(9)
+func MonthlyRate(yearlyRate decimal.Decimal) (decimal.Decimal, error) {
+	monthsInYear := decimal.MustNew(12, 0)
+	return yearlyRate.Quo(monthsInYear)
 }
 
-func AnnuityPayment(amount money.Amount, rate decimal.Decimal, periods int) money.Amount {
+// AnnuityPayment function calculates Amount * Rate / (1 - (1 + Rate)^(-Periods))
+func AnnuityPayment(amount money.Amount, rate decimal.Decimal, periods int) (money.Amount, error) {
 	one := rate.One()
-	num := amount.Mul(rate)
-	den := one.Sub(one.Add(rate).Pow(-periods))
-	return num.Quo(den)
+	// Numerator
+	num, err := amount.Mul(rate)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	// Denominator
+	den, err := rate.Add(one)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	den, err = den.Pow(-periods)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	den, err = one.Sub(den)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	res, err := num.Quo(den)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	return res.RoundToCurr(), nil
 }
 
-func SimulateSchedule(principal money.Amount, yearlyRate decimal.Decimal, years int) AmortizationSchedule {
+func SimulateSchedule(balance money.Amount, yearlyRate decimal.Decimal, years int) (AmortizationSchedule, error) {
 	months := years * 12
-	monthlyRate := MonthlyRate(yearlyRate)
-	totalAmount := AnnuityPayment(principal, monthlyRate, months)
-	outgoingBalance := principal
+	monthlyRate, err := MonthlyRate(yearlyRate)
+	if err != nil {
+		return nil, err
+	}
+	repayment, err := AnnuityPayment(balance, monthlyRate, months)
+	if err != nil {
+		return nil, err
+	}
 	schedule := AmortizationSchedule{}
 	for i := 0; i < months; i++ {
-		interestPart := outgoingBalance.Mul(monthlyRate).RoundToCurr()
-		principalPart := totalAmount.Sub(interestPart)
-		outgoingBalance = outgoingBalance.Sub(principalPart)
-		schedule = schedule.Append(i+1, totalAmount, principalPart, interestPart, outgoingBalance)
+		interest, err := balance.Mul(monthlyRate)
+		if err != nil {
+			return nil, err
+		}
+		interest = interest.RoundToCurr()
+		principal, err := repayment.Sub(interest)
+		if err != nil {
+			return nil, err
+		}
+		balance, err = balance.Sub(principal)
+		if err != nil {
+			return nil, err
+		}
+		schedule = schedule.Append(i+1, repayment, principal, interest, balance)
 	}
-	return schedule
+	return schedule, nil
 }
 
 // In this example, a loan amortization table is generated for a loan with
 // an initial amount of USD 12,000, an annual interest rate of 10%, and
 // a repayment period of 1 year.
 func Example_loanAmortization() {
-	// Loan parameters
-	initialAmount := money.MustParseAmount("USD", "12000")
-	yearlyInterestRate := decimal.MustParse("0.1")
+	// Set up initial loan balance and interest rate
+	initialBalance := money.MustParseAmount("USD", "12000")
+	yearlyRate := decimal.MustParse("0.1")
 	years := 1
 
-	// Calculate loan repayment plan
-	schedule := SimulateSchedule(initialAmount, yearlyInterestRate, years)
-
-	// Print header
-	fmt.Printf("Initial Amount = %v, Interest Rate = %.2k\n\n", initialAmount, yearlyInterestRate)
+	// Display the initial loan balance and interest rate
+	fmt.Printf("Initial Balance = %v\n", initialBalance)
+	fmt.Printf("Interest Rate   = %.2k\n\n", yearlyRate)
 	fmt.Println("Month  Repayment   Principal   Interest    Outstanding")
 
-	// Print plan lines
-	for _, line := range schedule {
-		fmt.Printf("%5d %12f %11f %11f %11f\n",
-			line.Month, line.Repayment, line.Principal,
-			line.Interest, line.Outstanding)
+	// Generate the amortization schedule
+	schedule, err := SimulateSchedule(initialBalance, yearlyRate, years)
+	if err != nil {
+		panic(err)
 	}
 
-	// Print total
-	fmt.Printf("Total %12f %11f %11f\n",
-		schedule.TotalRepayment(),
-		schedule.TotalPrincipal(),
-		schedule.TotalInterest())
+	// Display the amortization schedule, showing the monthly
+	// repayment, principal, interest and outstanding loan balance
+	for _, line := range schedule {
+		fmt.Printf("%5d %12f %11f %11f %11f\n", line.Month, line.Repayment, line.Principal, line.Interest, line.Balance)
+	}
+
+	// Calculate and display the total amounts repaid, both principal and interest
+	totalRepayment, err := schedule.TotalRepayment()
+	if err != nil {
+		panic(err)
+	}
+	totalPrincipal, err := schedule.TotalPrincipal()
+	if err != nil {
+		panic(err)
+	}
+	totalInterest, err := schedule.TotalInterest()
+	if err != nil {
+		panic(err)
+	}
+
+	// Display the total repayment, principal repayment and interest payment over the loan period
+	fmt.Printf("Total %12f %11f %11f\n", totalRepayment, totalPrincipal, totalInterest)
 
 	// Output:
-	// Initial Amount = USD 12000.00, Interest Rate = 10.00%
+	// Initial Balance = USD 12000.00
+	// Interest Rate   = 10.00%
 	//
 	// Month  Repayment   Principal   Interest    Outstanding
 	//     1      1054.99      954.99      100.00    11045.01
@@ -266,38 +409,37 @@ func Example_loanAmortization() {
 	//     5      1054.99      987.22       67.77     7144.81
 	//     6      1054.99      995.45       59.54     6149.36
 	//     7      1054.99     1003.75       51.24     5145.61
-	//     8      1054.99     1012.11       42.88     4133.49
-	//     9      1054.99     1020.54       34.45     3112.95
-	//    10      1054.99     1029.05       25.94     2083.90
-	//    11      1054.99     1037.62       17.37     1046.28
-	//    12      1054.99     1046.27        8.72        0.01
-	// Total     12659.89    11999.99      659.90
+	//     8      1054.99     1012.11       42.88     4133.50
+	//     9      1054.99     1020.54       34.45     3112.96
+	//    10      1054.99     1029.05       25.94     2083.91
+	//    11      1054.99     1037.62       17.37     1046.29
+	//    12      1054.99     1046.27        8.72        0.02
+	// Total     12659.88    11999.98      659.90
+}
+
+func ExampleMustNewAmount() {
+	c := money.USD
+	d := decimal.MustNew(12345, 2)
+	a := money.MustNewAmount(c, d)
+	fmt.Println(a)
+	// Output: USD 123.45
 }
 
 func ExampleNewAmount() {
-	curr := money.USD
-	dec := decimal.New(100, 0)
-	a, err := money.NewAmount(curr, dec)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(a)
-	// Output: USD 100.00
+	c := money.USD
+	d := decimal.MustNew(12345, 2)
+	fmt.Println(money.NewAmount(c, d))
+	// Output: USD 123.45 <nil>
 }
 
 func ExampleMustParseAmount() {
-	a := money.MustParseAmount("USD", "-1.230")
-	fmt.Println(a)
-	// Output: USD -1.230
+	fmt.Println(money.MustParseAmount("USD", "-1.2"))
+	// Output: USD -1.20
 }
 
 func ExampleParseAmount() {
-	a, err := money.ParseAmount("USD", "-12.34")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(a)
-	// Output: USD -12.34
+	fmt.Println(money.ParseAmount("USD", "-12.3"))
+	// Output: USD -12.30 <nil>
 }
 
 func ExampleAmount_Coef() {
@@ -375,14 +517,14 @@ func ExampleAmount_Add() {
 	a := money.MustParseAmount("USD", "15.6")
 	b := money.MustParseAmount("USD", "8")
 	fmt.Println(a.Add(b))
-	// Output: USD 23.60
+	// Output: USD 23.60 <nil>
 }
 
 func ExampleAmount_Sub() {
 	a := money.MustParseAmount("USD", "15.6")
 	b := money.MustParseAmount("USD", "8")
 	fmt.Println(a.Sub(b))
-	// Output: USD 7.60
+	// Output: USD 7.60 <nil>
 }
 
 func ExampleAmount_FMA() {
@@ -390,33 +532,51 @@ func ExampleAmount_FMA() {
 	b := money.MustParseAmount("USD", "4")
 	e := decimal.MustParse("3")
 	fmt.Println(a.FMA(e, b))
-	// Output: USD 10.00
+	// Output: USD 10.00 <nil>
 }
 
 func ExampleAmount_Mul() {
 	a := money.MustParseAmount("USD", "5.7")
 	e := decimal.MustParse("3")
 	fmt.Println(a.Mul(e))
-	// Output: USD 17.10
+	// Output: USD 17.10 <nil>
 }
 
 func ExampleAmount_Quo() {
 	a := money.MustParseAmount("USD", "-15.67")
 	e := decimal.MustParse("2")
 	fmt.Println(a.Quo(e))
-	// Output: USD -7.835
+	// Output: USD -7.835 <nil>
 }
 
 func ExampleAmount_Rat() {
 	a := money.MustParseAmount("USD", "8")
 	b := money.MustParseAmount("USD", "10")
 	fmt.Println(a.Rat(b))
-	// Output: 0.8
+	// Output: 0.8 <nil>
+}
+
+func ExampleAmount_Rescale() {
+	a := money.MustParseAmount("USD", "15.6789")
+	fmt.Println(a.Rescale(6))
+	fmt.Println(a.Rescale(5))
+	fmt.Println(a.Rescale(4))
+	fmt.Println(a.Rescale(3))
+	fmt.Println(a.Rescale(2))
+	fmt.Println(a.Rescale(1))
+	fmt.Println(a.Rescale(0))
+	// Output:
+	// USD 15.678900 <nil>
+	// USD 15.67890 <nil>
+	// USD 15.6789 <nil>
+	// USD 15.679 <nil>
+	// USD 15.68 <nil>
+	// USD 15.68 <nil>
+	// USD 15.68 <nil>
 }
 
 func ExampleAmount_Round() {
-	a := money.MustParseAmount("USD", "15.679")
-	fmt.Println(a.Round(6))
+	a := money.MustParseAmount("USD", "15.6789")
 	fmt.Println(a.Round(5))
 	fmt.Println(a.Round(4))
 	fmt.Println(a.Round(3))
@@ -424,9 +584,8 @@ func ExampleAmount_Round() {
 	fmt.Println(a.Round(1))
 	fmt.Println(a.Round(0))
 	// Output:
-	// USD 15.679000
-	// USD 15.67900
-	// USD 15.6790
+	// USD 15.6789
+	// USD 15.6789
 	// USD 15.679
 	// USD 15.68
 	// USD 15.68
@@ -447,7 +606,7 @@ func ExampleAmount_RoundToCurr() {
 }
 
 func ExampleAmount_Quantize() {
-	a := money.MustParseAmount("JPY", "15.679")
+	a := money.MustParseAmount("JPY", "15.6789")
 	x := money.MustParseAmount("JPY", "0.01")
 	y := money.MustParseAmount("JPY", "0.1")
 	z := money.MustParseAmount("JPY", "1")
@@ -455,14 +614,13 @@ func ExampleAmount_Quantize() {
 	fmt.Println(a.Quantize(y))
 	fmt.Println(a.Quantize(z))
 	// Output:
-	// JPY 15.68
-	// JPY 15.7
-	// JPY 16
+	// JPY 15.68 <nil>
+	// JPY 15.7 <nil>
+	// JPY 16 <nil>
 }
 
 func ExampleAmount_Ceil() {
-	a := money.MustParseAmount("USD", "15.679")
-	fmt.Println(a.Ceil(6))
+	a := money.MustParseAmount("USD", "15.6789")
 	fmt.Println(a.Ceil(5))
 	fmt.Println(a.Ceil(4))
 	fmt.Println(a.Ceil(3))
@@ -470,9 +628,8 @@ func ExampleAmount_Ceil() {
 	fmt.Println(a.Ceil(1))
 	fmt.Println(a.Ceil(0))
 	// Output:
-	// USD 15.679000
-	// USD 15.67900
-	// USD 15.6790
+	// USD 15.6789
+	// USD 15.6789
 	// USD 15.679
 	// USD 15.68
 	// USD 15.68
@@ -493,8 +650,7 @@ func ExampleAmount_CeilToCurr() {
 }
 
 func ExampleAmount_Floor() {
-	a := money.MustParseAmount("USD", "15.679")
-	fmt.Println(a.Floor(6))
+	a := money.MustParseAmount("USD", "15.6789")
 	fmt.Println(a.Floor(5))
 	fmt.Println(a.Floor(4))
 	fmt.Println(a.Floor(3))
@@ -502,10 +658,9 @@ func ExampleAmount_Floor() {
 	fmt.Println(a.Floor(1))
 	fmt.Println(a.Floor(0))
 	// Output:
-	// USD 15.679000
-	// USD 15.67900
-	// USD 15.6790
-	// USD 15.679
+	// USD 15.6789
+	// USD 15.6789
+	// USD 15.678
 	// USD 15.67
 	// USD 15.67
 	// USD 15.67
@@ -525,8 +680,7 @@ func ExampleAmount_FloorToCurr() {
 }
 
 func ExampleAmount_Trunc() {
-	a := money.MustParseAmount("USD", "15.679")
-	fmt.Println(a.Trunc(6))
+	a := money.MustParseAmount("USD", "15.6789")
 	fmt.Println(a.Trunc(5))
 	fmt.Println(a.Trunc(4))
 	fmt.Println(a.Trunc(3))
@@ -534,10 +688,9 @@ func ExampleAmount_Trunc() {
 	fmt.Println(a.Trunc(1))
 	fmt.Println(a.Trunc(0))
 	// Output:
-	// USD 15.679000
-	// USD 15.67900
-	// USD 15.6790
-	// USD 15.679
+	// USD 15.6789
+	// USD 15.6789
+	// USD 15.678
 	// USD 15.67
 	// USD 15.67
 	// USD 15.67
@@ -556,13 +709,30 @@ func ExampleAmount_TruncToCurr() {
 	// OMR 1.567
 }
 
-func ExampleAmount_Reduce() {
+func ExampleAmount_Trim() {
+	a := money.MustParseAmount("USD", "20.0000")
+	fmt.Println(a.Trim(5))
+	fmt.Println(a.Trim(4))
+	fmt.Println(a.Trim(3))
+	fmt.Println(a.Trim(2))
+	fmt.Println(a.Trim(1))
+	fmt.Println(a.Trim(0))
+	// Output:
+	// USD 20.0000
+	// USD 20.0000
+	// USD 20.000
+	// USD 20.00
+	// USD 20.00
+	// USD 20.00
+}
+
+func ExampleAmount_TrimToCurr() {
 	a := money.MustParseAmount("JPY", "10.0000")
 	b := money.MustParseAmount("USD", "20.0000")
 	c := money.MustParseAmount("OMR", "30.0000")
-	fmt.Println(a.Reduce())
-	fmt.Println(b.Reduce())
-	fmt.Println(c.Reduce())
+	fmt.Println(a.TrimToCurr())
+	fmt.Println(b.TrimToCurr())
+	fmt.Println(c.TrimToCurr())
 	// Output:
 	// JPY 10
 	// USD 20.00
@@ -616,19 +786,17 @@ func ExampleAmount_Scale() {
 
 func ExampleAmount_Split() {
 	a := money.MustParseAmount("USD", "1.01")
-	fmt.Println(a.Split(6))
 	fmt.Println(a.Split(5))
 	fmt.Println(a.Split(4))
 	fmt.Println(a.Split(3))
 	fmt.Println(a.Split(2))
 	fmt.Println(a.Split(1))
 	// Output:
-	// [USD 0.17 USD 0.17 USD 0.17 USD 0.17 USD 0.17 USD 0.16]
-	// [USD 0.21 USD 0.20 USD 0.20 USD 0.20 USD 0.20]
-	// [USD 0.26 USD 0.25 USD 0.25 USD 0.25]
-	// [USD 0.34 USD 0.34 USD 0.33]
-	// [USD 0.51 USD 0.50]
-	// [USD 1.01]
+	// [USD 0.21 USD 0.20 USD 0.20 USD 0.20 USD 0.20] <nil>
+	// [USD 0.26 USD 0.25 USD 0.25 USD 0.25] <nil>
+	// [USD 0.34 USD 0.34 USD 0.33] <nil>
+	// [USD 0.51 USD 0.50] <nil>
+	// [USD 1.01] <nil>
 }
 
 func ExampleAmount_Format() {
@@ -845,18 +1013,24 @@ func ExampleCurrency_Format() {
 }
 
 func ParseISO8583(s string) (money.Amount, error) {
+	// Currency
 	c, err := money.ParseCurr(s[:3])
 	if err != nil {
 		return money.Amount{}, err
 	}
+	// Amount
 	n, err := strconv.ParseInt(s[4:], 10, 64)
 	if err != nil {
 		return money.Amount{}, err
 	}
-	if s[3:4] == "D" {
-		n = -n
+	d, err := decimal.New(n, c.Scale())
+	if err != nil {
+		return money.Amount{}, err
 	}
-	d := decimal.New(n, c.Scale())
+	// Sign
+	if s[3:4] == "D" {
+		d = d.Neg()
+	}
 	return money.NewAmount(c, d)
 }
 
@@ -872,22 +1046,33 @@ func ExampleNewAmount_iso8583() {
 }
 
 func ParseMoneyProto(curr string, units int64, nanos int32) (money.Amount, error) {
-	if units > 0 && nanos < 0 || units < 0 && nanos > 0 {
-		return money.Amount{}, fmt.Errorf("inconsistent signs")
-	}
-	if nanos > 999_999_999 || nanos < -999_999_999 {
-		return money.Amount{}, fmt.Errorf("inconsistent nanos")
-	}
+	// Currency
 	c, err := money.ParseCurr(curr)
 	if err != nil {
 		return money.Amount{}, err
 	}
-	u := decimal.New(units, 0)
-	n := decimal.New(int64(nanos), 9).Reduce()
-	if u.Prec() > decimal.MaxPrec-c.Scale() {
-		return money.Amount{}, fmt.Errorf("with currency %v, the integer part of %T can have at most %v digit(s), but it has %v digit(s)", c, money.Amount{}, decimal.MaxPrec-c.Scale(), u.Prec())
+	// Units
+	if units > 0 && nanos < 0 || units < 0 && nanos > 0 {
+		return money.Amount{}, fmt.Errorf("inconsistent signs")
 	}
-	d := u.AddExact(n, c.Scale())
+	u, err := decimal.New(units, 0)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	// Nanos
+	if nanos < -999_999_999 || nanos > 999_999_999 {
+		return money.Amount{}, fmt.Errorf("inconsistent nanos")
+	}
+	n, err := decimal.New(int64(nanos), 9)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	n = n.Trim(c.Scale())
+	// Amount
+	d, err := u.AddExact(n, c.Scale())
+	if err != nil {
+		return money.Amount{}, err
+	}
 	return money.NewAmount(c, d)
 }
 
@@ -904,11 +1089,16 @@ func ExampleNewAmount_protobuf() {
 }
 
 func ParseStripe(currency string, amount int64) (money.Amount, error) {
+	// Currency
 	c, err := money.ParseCurr(currency)
 	if err != nil {
 		return money.Amount{}, err
 	}
-	d := decimal.New(amount, c.Scale())
+	// Amount
+	d, err := decimal.New(amount, c.Scale())
+	if err != nil {
+		return money.Amount{}, err
+	}
 	return money.NewAmount(c, d)
 }
 
@@ -969,9 +1159,9 @@ func ExampleAmount_Cmp() {
 	fmt.Println(a.Cmp(a))
 	fmt.Println(b.Cmp(a))
 	// Output:
-	// 1
-	// 0
-	// -1
+	// 1 <nil>
+	// 0 <nil>
+	// -1 <nil>
 }
 
 func ExampleAmount_CmpTotal() {
@@ -981,47 +1171,38 @@ func ExampleAmount_CmpTotal() {
 	fmt.Println(a.CmpTotal(a))
 	fmt.Println(b.CmpTotal(a))
 	// Output:
-	// 1
-	// 0
-	// -1
+	// 1 <nil>
+	// 0 <nil>
+	// -1 <nil>
 }
 
 func ExampleAmount_Max() {
 	a := money.MustParseAmount("USD", "23")
 	b := money.MustParseAmount("USD", "-15.67")
 	fmt.Println(a.Max(b))
-	// Output: USD 23.00
+	// Output: USD 23.00 <nil>
 }
 
 func ExampleAmount_Min() {
 	a := money.MustParseAmount("USD", "23")
 	b := money.MustParseAmount("USD", "-15.67")
 	fmt.Println(a.Min(b))
-	// Output: USD -15.67
+	// Output: USD -15.67 <nil>
 }
 
 func ExampleNewExchRate() {
-	dec := decimal.New(12000, 4)
-	r, err := money.NewExchRate(money.USD, money.EUR, dec)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(r)
-	// Output: USD/EUR 1.2000
+	r := decimal.MustParse("1.2000")
+	fmt.Println(money.NewExchRate(money.USD, money.EUR, r))
+	// Output: USD/EUR 1.2000 <nil>
 }
 
 func ExampleParseExchRate() {
-	r, err := money.ParseExchRate("USD", "EUR", "1.2000")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(r)
-	// Output: USD/EUR 1.2000
+	fmt.Println(money.ParseExchRate("USD", "EUR", "1.2000"))
+	// Output: USD/EUR 1.2000 <nil>
 }
 
 func ExampleMustParseExchRate() {
-	r := money.MustParseExchRate("OMR", "USD", "0.38497")
-	fmt.Println(r)
+	fmt.Println(money.MustParseExchRate("OMR", "USD", "0.38497"))
 	// Output: OMR/USD 0.38497
 }
 
@@ -1029,7 +1210,7 @@ func ExampleExchangeRate_Conv() {
 	r := money.MustParseExchRate("USD", "JPY", "133.27")
 	b := money.MustParseAmount("USD", "200.00")
 	fmt.Println(r.Conv(b))
-	// Output: JPY 26654.0000
+	// Output: JPY 26654.0000 <nil>
 }
 
 func ExampleExchangeRate_Prec() {
@@ -1056,13 +1237,13 @@ func ExampleExchangeRate_Mul() {
 	r := money.MustParseExchRate("USD", "EUR", "0.9000")
 	e := decimal.MustParse("1.1")
 	fmt.Println(r.Mul(e))
-	// Output: USD/EUR 0.99000
+	// Output: USD/EUR 0.99000 <nil>
 }
 
 func ExampleExchangeRate_Inv() {
 	r := money.MustParseExchRate("EUR", "USD", "1.250")
 	fmt.Println(r.Inv())
-	// Output: USD/EUR 0.8000
+	// Output: USD/EUR 0.8000 <nil>
 }
 
 func ExampleExchangeRate_Base() {
@@ -1173,9 +1354,29 @@ func ExampleExchangeRate_String() {
 	// Output: USD/EUR 1.2345
 }
 
+func ExampleExchangeRate_Rescale() {
+	r := money.MustParseExchRate("EUR", "USD", "1.234567")
+	fmt.Println(r.Rescale(7))
+	fmt.Println(r.Rescale(6))
+	fmt.Println(r.Rescale(5))
+	fmt.Println(r.Rescale(4))
+	fmt.Println(r.Rescale(3))
+	fmt.Println(r.Rescale(2))
+	fmt.Println(r.Rescale(1))
+	fmt.Println(r.Rescale(0))
+	// Output:
+	// EUR/USD 1.2345670 <nil>
+	// EUR/USD 1.234567 <nil>
+	// EUR/USD 1.23457 <nil>
+	// EUR/USD 1.2346 <nil>
+	// EUR/USD 1.2346 <nil>
+	// EUR/USD 1.2346 <nil>
+	// EUR/USD 1.2346 <nil>
+	// EUR/USD 1.2346 <nil>
+}
+
 func ExampleExchangeRate_Round() {
 	r := money.MustParseExchRate("EUR", "USD", "1.234567")
-	fmt.Println(r.Round(8))
 	fmt.Println(r.Round(7))
 	fmt.Println(r.Round(6))
 	fmt.Println(r.Round(5))
@@ -1185,8 +1386,7 @@ func ExampleExchangeRate_Round() {
 	fmt.Println(r.Round(1))
 	fmt.Println(r.Round(0))
 	// Output:
-	// EUR/USD 1.23456700
-	// EUR/USD 1.2345670
+	// EUR/USD 1.234567
 	// EUR/USD 1.234567
 	// EUR/USD 1.23457
 	// EUR/USD 1.2346

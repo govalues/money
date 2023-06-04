@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0] - 2023-06-04
+
+### Changed
+
+- All methods return error instead of panicing.
+- Renamed Amount.Round to Amount.Rescale.
+- Renamed ExchangeRate.Round to ExchangeRate.Rescale.
+
 ## [0.0.3] - 2023-04-22
 
 ### Changed
