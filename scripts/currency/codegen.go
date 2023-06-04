@@ -1,4 +1,3 @@
-// gen is used to autogenerate currency_data.go.
 package main
 
 import (

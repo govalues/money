@@ -47,10 +47,10 @@ difference, _ := a.Sub(b)
 product, _ := a.Mul(d)
 quotient, _ := a.Quo(d)
 ratio, _ := a.Rat(b)
-ceil, _ := a.Ceil(2)
-floor, _ := a.Floor(2)
-trunc, _ := a.Trunc(2)
-round, _ := a.Round(2)
+ceil := a.Ceil(2)
+floor := a.Floor(2)
+trunc := a.Trunc(2)
+round := a.Round(2)
 ```
 
 For more details on these and other methods, see the package documentation at [pkg.go.dev](https://pkg.go.dev/github.com/govalues/money).

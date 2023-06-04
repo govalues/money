@@ -5,7 +5,9 @@ numbers and combines them with a [Currency] to represent different currencies.
 
 # Features
 
-  - Immutable monetary values, ensuring safe usage across multiple goroutines
+  - Amounts and exchange rates are immutable, ensuring safe usage across multiple goroutines
+  - Methods are panic-free and pure, returning errors in cases such as uint64 overflow,
+    division by zero, or invalid currency
   - Support for various currencies and their corresponding scales
   - Arithmetic and comparison operations between monetary values
   - Conversion of monetary values using exchange rates

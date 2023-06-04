@@ -8,10 +8,7 @@ import (
 	"github.com/govalues/decimal"
 )
 
-var (
-	errCurrencyMismatch = errors.New("currency mismatch")
-	errDivisionByZero   = errors.New("division by zero")
-)
+var errCurrencyMismatch = errors.New("currency mismatch")
 
 // Amount type represents a monetary amount.
 // The zero value corresponds to "XXX 0", where XXX indicates an unknown currency.
@@ -21,18 +18,19 @@ type Amount struct {
 	value decimal.Decimal // the monetary value
 }
 
+func newAmountUnsafe(curr Currency, amount decimal.Decimal) Amount {
+	return Amount{curr: curr, value: amount}
+}
+
 // NewAmount returns a new amount with the specified currency and value.
 // If the scale of the amount is less than the scale of the currency, the result
 // will be zero-padded to the right.
 func NewAmount(curr Currency, amount decimal.Decimal) (Amount, error) {
-	if amount.Scale() < curr.Scale() {
-		a, err := amount.Round(curr.Scale())
-		if err != nil {
-			return Amount{}, fmt.Errorf("rescaling: %w", err)
-		}
-		amount = a
+	amount, err := amount.Pad(curr.Scale())
+	if err != nil {
+		return Amount{}, fmt.Errorf("padding: %w", err)
 	}
-	return Amount{curr: curr, value: amount}, nil
+	return newAmountUnsafe(curr, amount), nil
 }
 
 // MustNewAmount is like [NewAmount] but panics if the amount cannot be created.
@@ -85,11 +83,7 @@ func (a Amount) Coef() uint64 {
 // If the result cannot be represented as an int64, then false is returned.
 // See also method [Amount.RoundToCurr].
 func (a Amount) MinorUnits() (m int64, ok bool) {
-	a, err := a.RoundToCurr()
-	if err != nil {
-		return 0, false
-	}
-	coef := a.Coef()
+	coef := a.RoundToCurr().Coef()
 	if a.IsNeg() {
 		if coef > -math.MinInt64 {
 			return 0, false
@@ -158,29 +152,20 @@ func (a Amount) IsPos() bool {
 // Abs returns the absolute value of the amount.
 func (a Amount) Abs() Amount {
 	d := a.value
-	return Amount{curr: a.curr, value: d.Abs()}
+	return newAmountUnsafe(a.Curr(), d.Abs())
 }
 
 // Neg returns the amount with the opposite sign.
 func (a Amount) Neg() Amount {
 	d := a.value
-	return Amount{curr: a.curr, value: d.Neg()}
+	return newAmountUnsafe(a.Curr(), d.Neg())
 }
 
 // CopySign returns the amount with the same sign as amount b.
 // If amount b is zero, the sign of the result remains unchanged.
 func (a Amount) CopySign(b Amount) Amount {
 	d, e := a.value, b.value
-	return Amount{curr: a.curr, value: d.CopySign(e)}
-}
-
-// Reduce returns the amount with trailing zeros removed up to its currency scale.
-func (a Amount) Reduce() (Amount, error) {
-	d, err := a.value.Reduce()
-	if err != nil {
-		return Amount{}, fmt.Errorf("reducing %q: %w", a, err)
-	}
-	return NewAmount(a.Curr(), d)
+	return newAmountUnsafe(a.Curr(), d.CopySign(e))
 }
 
 // Scale returns the number of digits after the decimal point.
@@ -353,10 +338,7 @@ func (a Amount) Split(parts int) ([]Amount, error) {
 	if err != nil {
 		return nil, err
 	}
-	quo, err = quo.Trunc(a.Scale())
-	if err != nil {
-		return nil, err
-	}
+	quo = quo.Trunc(a.Scale())
 
 	// Reminder
 	rem, err := quo.Mul(div)
@@ -367,8 +349,6 @@ func (a Amount) Split(parts int) ([]Amount, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// ULP
 	ulp := rem.ULP().CopySign(rem)
 
 	res := make([]Amount, parts)
@@ -392,13 +372,13 @@ func (a Amount) Split(parts int) ([]Amount, error) {
 // See also method [Amount.ULP].
 func (a Amount) One() Amount {
 	d := a.value
-	return Amount{curr: a.Curr(), value: d.One()}
+	return newAmountUnsafe(a.Curr(), d.One())
 }
 
 // Zero returns an amount with a value of 0, having the same currency and scale as amount a.
 func (a Amount) Zero() Amount {
 	d := a.value
-	return Amount{curr: a.Curr(), value: d.Zero()}
+	return newAmountUnsafe(a.Curr(), d.Zero())
 }
 
 // ULP (Unit in the Last Place) returns the smallest representable positive difference
@@ -407,122 +387,107 @@ func (a Amount) Zero() Amount {
 // See also method [Amount.One].
 func (a Amount) ULP() Amount {
 	d := a.value
-	return Amount{curr: a.Curr(), value: d.ULP()}
+	return newAmountUnsafe(a.Curr(), d.ULP())
 }
 
 // Ceil returns an amount rounded up to the specified number of digits after
 // the decimal point.
-// If the scale of the amount is less than the specified scale, the result will be
-// zero-padded to the right.
-// If the specified scale is less than the scale of the currency,
-// the amount will be rounded up to the scale of te currency instead.
+// If the given scale is less than the scale of the currency,
+// the amount will be rounded up to the scale of the currency instead.
 // See also method [Amount.CeilToCurr].
-//
-// Ceil returns an error if the integer part of the result exceeds the maximum precision,
-// calculated as ([decimal.MaxPrec] - scale).
-func (a Amount) Ceil(scale int) (Amount, error) {
+func (a Amount) Ceil(scale int) Amount {
 	if scale < a.Curr().Scale() {
 		scale = a.Curr().Scale()
 	}
 	d := a.value
-	d, err := d.Ceil(scale)
-	if err != nil {
-		return Amount{}, fmt.Errorf("ceiling %q to %v decimal places: %w", a, scale, err)
-	}
-	return NewAmount(a.Curr(), d)
+	return newAmountUnsafe(a.Curr(), d.Ceil(scale))
 }
 
 // CeilToCurr returns an amount rounded up to the scale of its currency.
 // See also method [Amount.SameScaleAsCurr].
-func (a Amount) CeilToCurr() (Amount, error) {
+func (a Amount) CeilToCurr() Amount {
 	return a.Ceil(a.Curr().Scale())
 }
 
 // Floor returns an amount rounded down to the specified number of digits after
 // the decimal point.
-// If the scale of the amount is less than the specified scale,
-// the result will be zero-padded to the right.
-// If the specified scale is less than the scale of the currency, the amount will be
-// rounded down to the scale of the currency instead.
+// If the given scale is less than the scale of the currency,
+// the amount will be rounded down to the scale of the currency instead.
 // See also method [Amount.FloorToCurr].
-//
-// Floor returns an error if the integer part of the result exceeds the maximum precision,
-// calculated as ([decimal.MaxPrec] - scale).
-func (a Amount) Floor(scale int) (Amount, error) {
+func (a Amount) Floor(scale int) Amount {
 	if scale < a.Curr().Scale() {
 		scale = a.Curr().Scale()
 	}
 	d := a.value
-	d, err := d.Floor(scale)
-	if err != nil {
-		return Amount{}, fmt.Errorf("flooring %q to %v decimal places: %w", a, scale, err)
-	}
-	return NewAmount(a.Curr(), d)
+	return newAmountUnsafe(a.Curr(), d.Floor(scale))
 }
 
 // FloorToCurr returns an amount rounded down to the scale of its currency.
 // See also method [Amount.SameScaleAsCurr].
-func (a Amount) FloorToCurr() (Amount, error) {
+func (a Amount) FloorToCurr() Amount {
 	return a.Floor(a.Curr().Scale())
 }
 
 // Trunc returns an amount truncated to the specified number of digits after
 // the decimal point.
-// If the scale of the amount is less than the specified scale,
-// the result will be zero-padded to the right.
-// If the specified scale is less than the scale of the currency,
+// If the given scale is less than the scale of the currency,
 // the amount will be truncated to the scale of the currency instead.
 // See also method [Amount.TruncToCurr].
-//
-// Trunc returns an error if the integer part of the result exceeds the maximum precision,
-// calculated as ([decimal.MaxPrec] - scale).
-func (a Amount) Trunc(scale int) (Amount, error) {
+func (a Amount) Trunc(scale int) Amount {
 	if scale < a.Curr().Scale() {
 		scale = a.Curr().Scale()
 	}
 	d := a.value
-	d, err := d.Trunc(scale)
-	if err != nil {
-		return Amount{}, fmt.Errorf("truncating %q to %v decimal places: %w", a, scale, err)
-	}
-	return NewAmount(a.Curr(), d)
+	return newAmountUnsafe(a.Curr(), d.Trunc(scale))
 }
 
 // TruncToCurr returns an amount truncated to the scale of its currency.
-// See also method Amount.SameScaleAsCurr.
-func (a Amount) TruncToCurr() (Amount, error) {
+// See also method [Amount.SameScaleAsCurr].
+func (a Amount) TruncToCurr() Amount {
 	return a.Trunc(a.Curr().Scale())
 }
 
 // Round returns an amount rounded to the specified number of digits after
-// the decimal point. If the scale of the amount is less than the specified scale,
-// the result will be zero-padded to the right. If the specified scale is less than
-// the scale of the currency, the amount will be rounded to the currency's scale
-// instead. See also method Amount.RoundToCurr.
-//
-// Round returns an error if the integer part of the result exceeds the maximum precision,
-// calculated as ([decimal.MaxPrec] - scale).
-func (a Amount) Round(scale int) (Amount, error) {
+// the decimal point.
+// If the given scale is less than the scale of the currency,
+// the amount will be rounded to the currency's scale instead.
+// See also method [Amount.RoundToCurr].
+func (a Amount) Round(scale int) Amount {
 	if scale < a.Curr().Scale() {
 		scale = a.Curr().Scale()
 	}
 	d := a.value
-	d, err := d.Round(scale)
-	if err != nil {
-		return Amount{}, fmt.Errorf("rounding %q to %v decimal plases: %w", a, scale, err)
-	}
-	return NewAmount(a.Curr(), d)
+	return newAmountUnsafe(a.Curr(), d.Round(scale))
 }
 
 // RoundToCurr returns an amount rounded to the scale of its currency.
 // See also method [Amount.SameScaleAsCurr].
-func (a Amount) RoundToCurr() (Amount, error) {
+func (a Amount) RoundToCurr() Amount {
 	return a.Round(a.Curr().Scale())
+}
+
+// Rescale returns an amount rounded or zero-padded to the given number of digits
+// after the decimal point.
+// If the specified scale is less than the scale of the currency,
+// the amount will be rounded to the currency's scale instead.
+//
+// Rescale returns an error if the integer part of the result exceeds
+// the maximum precision, calculated as ([decimal.MaxPrec] - scale).
+func (a Amount) Rescale(scale int) (Amount, error) {
+	if scale < a.Curr().Scale() {
+		scale = a.Curr().Scale()
+	}
+	d := a.value
+	d, err := d.Rescale(scale)
+	if err != nil {
+		return Amount{}, fmt.Errorf("rescaling %q to %v decimal places: %w", a, scale, err)
+	}
+	return NewAmount(a.Curr(), d)
 }
 
 // Quantize returns an amount rounded to the same scale as amount b.
 // The sign and value of amount b are ignored.
-// See also method [Amount.Round].
+// See also method [Amount.Rescale].
 //
 // Quantize returns an error if:
 //   - amounts are denominated in different currencies.
@@ -532,7 +497,24 @@ func (a Amount) Quantize(b Amount) (Amount, error) {
 	if !a.SameCurr(b) {
 		return Amount{}, errCurrencyMismatch
 	}
-	return a.Round(b.Scale())
+	return a.Rescale(b.Scale())
+}
+
+// Trim returns an amount with trailing zeros removed up to the given scale.
+// If the given scale is less than the scale of the currency,
+// the zeros will be removed up to the scale of the currency instead.
+// See also method [Amount.TrimToCurr].
+func (a Amount) Trim(scale int) Amount {
+	if scale < a.Curr().Scale() {
+		scale = a.Curr().Scale()
+	}
+	d := a.value
+	return newAmountUnsafe(a.Curr(), d.Trim(scale))
+}
+
+// TrimToCurr returns an amount with trailing zeros removed up the scale of its currency.
+func (a Amount) TrimToCurr() Amount {
+	return a.Trim(a.Curr().Scale())
 }
 
 // SameCurr returns true if amounts are denominated in the same currency.
@@ -645,7 +627,6 @@ func (a Amount) Max(b Amount) (Amount, error) {
 // [fmt.Formatter]: https://pkg.go.dev/fmt#Formatter
 func (a Amount) Format(state fmt.State, verb rune) {
 	// Rescaling
-	var err error
 	tzeroes := 0
 	if verb == 'f' || verb == 'F' || verb == 'd' || verb == 'D' {
 		scale := 0
@@ -658,15 +639,10 @@ func (a Amount) Format(state fmt.State, verb rune) {
 			scale = a.Curr().Scale()
 		}
 		switch {
-		case scale < 0:
-			scale = 0
+		case scale < a.Scale():
+			a = a.Round(scale)
 		case scale > a.Scale():
 			tzeroes = scale - a.Scale()
-			scale = a.Scale()
-		}
-		a, err = a.Round(scale)
-		if err != nil {
-			panic(err) // this panic will be handled by the standard library
 		}
 	}
 

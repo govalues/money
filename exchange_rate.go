@@ -16,6 +16,10 @@ type ExchangeRate struct {
 	value decimal.Decimal // how many units of quote currency are needed to exchange for 1 unit of the base currency
 }
 
+func newExchRateUnsafe(base, quote Currency, rate decimal.Decimal) ExchangeRate {
+	return ExchangeRate{base: base, quote: quote, value: rate}
+}
+
 // NewExchRate returns a new exchange rate between the base and quote currencies.
 // If the scale of the rate is less than the sum of the scales of its base and
 // quote currencies, the result will be zero-padded to the right.
@@ -28,12 +32,12 @@ func NewExchRate(base, quote Currency, rate decimal.Decimal) (ExchangeRate, erro
 	}
 	if rate.Scale() < base.Scale()+quote.Scale() {
 		var err error
-		rate, err = rate.Round(base.Scale() + quote.Scale())
+		rate, err = rate.Rescale(base.Scale() + quote.Scale())
 		if err != nil {
 			return ExchangeRate{}, fmt.Errorf("exchange rate rescaling: %w", err)
 		}
 	}
-	return ExchangeRate{base: base, quote: quote, value: rate}, nil
+	return newExchRateUnsafe(base, quote, rate), nil
 }
 
 // ParseExchRate converts currency and decimal strings to a (possibly rounded) exchange rate.
@@ -115,23 +119,19 @@ func (r ExchangeRate) Conv(b Amount) (Amount, error) {
 	d, e := r.value, b.value
 	f, err := d.MulExact(e, r.Quote().Scale())
 	if err != nil {
-		return Amount{}, fmt.Errorf("exchange rate conversion: %w", err)
+		return Amount{}, fmt.Errorf("amount conversion: %w", err)
 	}
 	return NewAmount(r.Quote(), f)
 }
 
 // Inv returns the inverse of the exchange rate.
 func (r ExchangeRate) Inv() (ExchangeRate, error) {
-	d := r.value
-	if d.IsZero() {
-		return ExchangeRate{}, fmt.Errorf("zero rate does not have an inverse: %w", errDivisionByZero)
-	}
-	one := d.One()
-	d, err := one.Quo(d)
+	d, e := decimal.One, r.value
+	f, err := d.Quo(e)
 	if err != nil {
 		return ExchangeRate{}, fmt.Errorf("exchange rate inversion: %w", err)
 	}
-	return NewExchRate(r.Quote(), r.Base(), d)
+	return NewExchRate(r.Quote(), r.Base(), f)
 }
 
 // SameCurr returns true if exchange rates are denominated in the same base
@@ -188,33 +188,43 @@ func (r ExchangeRate) WithinOne() bool {
 	return r.value.WithinOne()
 }
 
-// Round returns an exchange rate that is rounded to the specified number of digits after
-// the decimal point.
-// If the scale of the exchange rate is less than the specified scale, the result will be
-// zero-padded to the right.
+// Round returns an exchange rate that is rounded to the given number of digits
+// after the decimal point.
 // If the specified scale is less than the sum of the scales of the base and quote
 // currency then the exchange rate will be rounded to the sum of scales instead.
 // See also method [ExchangeRate.RoundToCurr].
-//
-// Round returns an error if the integer part of the result exceeds the maximum precision.
-// This limit is calculated as ([decimal.MaxPrec] - scale).
-func (r ExchangeRate) Round(scale int) (ExchangeRate, error) {
+func (r ExchangeRate) Round(scale int) ExchangeRate {
 	if scale < r.Base().Scale()+r.Quote().Scale() {
 		scale = r.Base().Scale() + r.Quote().Scale()
 	}
 	d := r.value
-	d, err := d.Round(scale)
-	if err != nil {
-		return ExchangeRate{}, fmt.Errorf("exchange rate rounding: %w", err)
-	}
-	return NewExchRate(r.Base(), r.Quote(), d)
+	return newExchRateUnsafe(r.Base(), r.Quote(), d.Round(scale))
 }
 
 // RoundToCurr returns an exchange rate that is rounded to the sum of the scales of its base
 // and quote currencies.
 // See also method [ExchangeRate.SameScaleAsCurr].
-func (r ExchangeRate) RoundToCurr() (ExchangeRate, error) {
+func (r ExchangeRate) RoundToCurr() ExchangeRate {
 	return r.Round(r.Base().Scale() + r.Quote().Scale())
+}
+
+// Rescale returns an exchange rate that is rounded or zero-padded to the given
+// number of digits after the decimal point.
+// If the specified scale is less than the sum of the scales of the base and quote
+// currency then the exchange rate will be rounded to the sum of scales instead.
+//
+// Rescale returns an error if the integer part of the result exceeds the maximum
+// precision, calculated as ([decimal.MaxPrec] - scale).
+func (r ExchangeRate) Rescale(scale int) (ExchangeRate, error) {
+	if scale < r.Base().Scale()+r.Quote().Scale() {
+		scale = r.Base().Scale() + r.Quote().Scale()
+	}
+	d := r.value
+	d, err := d.Rescale(scale)
+	if err != nil {
+		return ExchangeRate{}, fmt.Errorf("rescaling %q to %v decimal places: %w", r, scale, err)
+	}
+	return NewExchRate(r.Base(), r.Quote(), d)
 }
 
 // String method implements the [fmt.Stringer] interface and returns a string
@@ -245,26 +255,20 @@ func (r ExchangeRate) String() string {
 // [fmt.Formatter]: https://pkg.go.dev/fmt#Formatter
 func (r ExchangeRate) Format(state fmt.State, verb rune) {
 	// Rescaling
-	var err error
 	tzeroes := 0
 	if verb == 'f' || verb == 'F' {
 		scale := 0
 		switch p, ok := state.Precision(); {
 		case ok:
 			scale = p
-		case verb == 'f' || verb == 'F':
+		default:
 			scale = r.Base().Scale() + r.Quote().Scale()
 		}
 		switch {
-		case scale < 0:
-			scale = 0
+		case scale < r.Scale():
+			r = r.Round(scale)
 		case scale > r.Scale():
 			tzeroes = scale - r.Scale()
-			scale = r.Scale()
-		}
-		r, err = r.Round(scale)
-		if err != nil {
-			panic(err) // this panic is handled by the standard library
 		}
 	}
 

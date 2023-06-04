@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-//go:generate go run scripts/currency/gen.go
+//go:generate go run scripts/currency/codegen.go
 
 // Currency type represents a currency in the global financial system.
 // The zero value is "XXX", which indicates an unknown currency.
