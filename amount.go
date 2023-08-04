@@ -103,14 +103,13 @@ func (a Amount) Float64() (f float64, ok bool) {
 	return a.value.Float64()
 }
 
-// Int64 returns a pair of int64 values representing the integer part i and the
+// Int64 returns a pair of int64 values representing the integer part b and the
 // fractional part f of the amount.
-// The relationship can be expressed as a = i + f / 10^scale, where the scale
-// can be obtained using the [Amount.Scale] method.
+// The relationship can be expressed as a = b + f / 10^scale.
 // If the result cannot be accurately represented as a pair of int64 values,
 // the method returns false.
-func (a Amount) Int64() (i int64, f int64, ok bool) {
-	return a.value.Int64()
+func (a Amount) Int64(scale int) (b, f int64, ok bool) {
+	return a.value.Int64(scale)
 }
 
 // Prec returns the number of digits in the coefficient.
@@ -237,7 +236,7 @@ func (a Amount) Sub(b Amount) (Amount, error) {
 	d, e := a.value, b.value
 	f, err := d.SubExact(e, a.Curr().Scale())
 	if err != nil {
-		return Amount{}, fmt.Errorf("%q - %q: %w", b, a, err)
+		return Amount{}, fmt.Errorf("%q - %q: %w", a, b, err)
 	}
 	return NewAmount(a.Curr(), f)
 }
@@ -351,6 +350,7 @@ func (a Amount) Split(parts int) ([]Amount, error) {
 	}
 	ulp := rem.ULP().CopySign(rem)
 
+	// Distribute remainder
 	res := make([]Amount, parts)
 	for i := 0; i < parts; i++ {
 		res[i] = quo
@@ -365,6 +365,7 @@ func (a Amount) Split(parts int) ([]Amount, error) {
 			}
 		}
 	}
+
 	return res, nil
 }
 
