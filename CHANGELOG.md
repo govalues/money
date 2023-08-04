@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1] - 2023-08-04
+
+### Changed
+
+- Implemented 'scale' argument for Amount.Int64 method.
+
 ## [0.1.0] - 2023-06-04
 
 ### Changed

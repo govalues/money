@@ -91,23 +91,23 @@ func (s Statement) OutgoingBalance() (money.Amount, error) {
 
 // PercChange method calculates (OutgoingBalance - IncomingBalance) / IncomingBalance
 func (s Statement) PercChange() (decimal.Decimal, error) {
-	start, err := s.IncomingBalance()
+	inc, err := s.IncomingBalance()
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	end, err := s.OutgoingBalance()
+	out, err := s.OutgoingBalance()
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	delta, err := end.Sub(start)
+	diff, err := out.Sub(inc)
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	ratio, err := delta.Rat(start)
+	rat, err := diff.Rat(inc)
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return ratio, nil
+	return rat, nil
 }
 
 func (s Statement) TotalInterest() (money.Amount, error) {
@@ -482,16 +482,20 @@ func ExampleAmount_Float64() {
 }
 
 func ExampleAmount_Int64() {
-	a := money.MustParseAmount("JPY", "100")
-	b := money.MustParseAmount("USD", "15.60")
-	c := money.MustParseAmount("OMR", "2.389")
-	fmt.Println(a.Int64())
-	fmt.Println(b.Int64())
-	fmt.Println(c.Int64())
+	a := money.MustParseAmount("USD", "15.67")
+	fmt.Println(a.Int64(5))
+	fmt.Println(a.Int64(4))
+	fmt.Println(a.Int64(3))
+	fmt.Println(a.Int64(2))
+	fmt.Println(a.Int64(1))
+	fmt.Println(a.Int64(0))
 	// Output:
-	// 100 0 true
-	// 15 60 true
-	// 2 389 true
+	// 15 67000 true
+	// 15 6700 true
+	// 15 670 true
+	// 15 67 true
+	// 15 7 true
+	// 16 0 true
 }
 
 func ExampleAmount_Prec() {
@@ -1051,28 +1055,12 @@ func ParseMoneyProto(curr string, units int64, nanos int32) (money.Amount, error
 	if err != nil {
 		return money.Amount{}, err
 	}
-	// Units
-	if units > 0 && nanos < 0 || units < 0 && nanos > 0 {
-		return money.Amount{}, fmt.Errorf("inconsistent signs")
-	}
-	u, err := decimal.New(units, 0)
-	if err != nil {
-		return money.Amount{}, err
-	}
-	// Nanos
-	if nanos < -999_999_999 || nanos > 999_999_999 {
-		return money.Amount{}, fmt.Errorf("inconsistent nanos")
-	}
-	n, err := decimal.New(int64(nanos), 9)
-	if err != nil {
-		return money.Amount{}, err
-	}
-	n = n.Trim(c.Scale())
 	// Amount
-	d, err := u.AddExact(n, c.Scale())
+	d, err := decimal.NewFromInt64(units, int64(nanos), 9)
 	if err != nil {
 		return money.Amount{}, err
 	}
+	d = d.Trim(c.Scale())
 	return money.NewAmount(c, d)
 }
 
