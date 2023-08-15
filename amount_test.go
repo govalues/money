@@ -452,6 +452,57 @@ func TestAmount_Quo(t *testing.T) {
 	})
 }
 
+func TestAmount_QuoRem(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			c, a, e, wantQuo, wantRem string
+		}{
+			{"USD", "1.00", "1", "1.00", "0.00"},
+			{"USD", "2.00", "1", "2.00", "0.00"},
+			{"USD", "1.00", "2", "0.50", "0.00"},
+			{"USD", "2.00", "2", "1.00", "0.00"},
+			{"USD", "0.00", "1", "0.00", "0.00"},
+			{"USD", "1.510", "3", "0.50", "0.010"},
+			{"USD", "3.333", "3", "1.11", "0.003"},
+			{"USD", "2.401", "1", "2.40", "0.001"},
+			{"USD", "2.401", "-1", "-2.40", "0.001"},
+			{"USD", "-2.401", "1", "-2.40", "-0.001"},
+			{"USD", "-2.401", "-1", "2.40", "-0.001"},
+		}
+		for _, tt := range tests {
+			a := MustParseAmount(tt.c, tt.a)
+			e := decimal.MustParse(tt.e)
+			gotQuo, gotRem, err := a.QuoRem(e)
+			if err != nil {
+				t.Errorf("%q.QuoRem(%q) failed: %v", a, e, err)
+				continue
+			}
+			wantQuo := MustParseAmount(tt.c, tt.wantQuo)
+			wantRem := MustParseAmount(tt.c, tt.wantRem)
+			if gotQuo != wantQuo || gotRem != wantRem {
+				t.Errorf("%q.QuoRem(%q) = [%q %q], want [%q %q]", a, e, gotQuo, gotRem, wantQuo, wantRem)
+			}
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		tests := map[string]struct {
+			c, a, e string
+		}{
+			"zero 1":     {"USD", "1", "0"},
+			"overflow 1": {"USD", "99999999999999999", "0.1"},
+		}
+		for _, tt := range tests {
+			a := MustParseAmount(tt.c, tt.a)
+			e := decimal.MustParse(tt.e)
+			_, _, err := a.QuoRem(e)
+			if err == nil {
+				t.Errorf("%q.QuoRem(%q) did not fail", a, e)
+			}
+		}
+	})
+}
+
 func TestAmount_Mul(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
