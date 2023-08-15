@@ -8,7 +8,7 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: [1.19.x, 1.20.x]
+        go-version: [oldstable, stable]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -23,7 +23,7 @@ jobs:
 
     - name: Verify code formatting
       run: gofmt -s -w . && git diff --exit-code
-      
+
     - name: Verify dependency consistency
       run: go get -u -t . && go mod tidy && git diff --exit-code
 
@@ -32,7 +32,7 @@ jobs:
 
     - name: Verify potential issues
       uses: golangci/golangci-lint-action@v3
-      
+
     - name: Run tests with coverage
       run: go test -race -shuffle=on -coverprofile="coverage.txt" -covermode=atomic ./...
 

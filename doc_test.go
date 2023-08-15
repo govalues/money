@@ -417,6 +417,91 @@ func Example_loanAmortization() {
 	// Total     12659.88    11999.98      659.90
 }
 
+func ParseISO8583(s string) (money.Amount, error) {
+	// Currency
+	c, err := money.ParseCurr(s[:3])
+	if err != nil {
+		return money.Amount{}, err
+	}
+	// Amount
+	n, err := strconv.ParseInt(s[4:], 10, 64)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	d, err := decimal.New(n, c.Scale())
+	if err != nil {
+		return money.Amount{}, err
+	}
+	// Sign
+	if s[3:4] == "D" {
+		d = d.Neg()
+	}
+	return money.NewAmount(c, d)
+}
+
+// In this example, we parse the string "840D000000001234", which represents -12.34 USD,
+// according to the specification for "DE54, Additional Amounts" in ISO 8583.
+func Example_parsingISO8583() {
+	a, err := ParseISO8583("840D000000001234")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(a)
+	// Output: USD -12.34
+}
+
+func ParseMoneyProto(curr string, units int64, nanos int32) (money.Amount, error) {
+	// Currency
+	c, err := money.ParseCurr(curr)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	// Amount
+	d, err := decimal.NewFromInt64(units, int64(nanos), 9)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	d = d.Trim(c.Scale())
+	return money.NewAmount(c, d)
+}
+
+// This is an example of how to a parse a monetary amount formatted as [MoneyProto].
+//
+// [MoneyProto]: https://github.com/googleapis/googleapis/blob/master/google/type/money.proto
+func Example_parsingProtobuf() {
+	a, err := ParseMoneyProto("840", -12, -340000000)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(a)
+	// Output: USD -12.34
+}
+
+func ParseStripe(currency string, amount int64) (money.Amount, error) {
+	// Currency
+	c, err := money.ParseCurr(currency)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	// Amount
+	d, err := decimal.New(amount, c.Scale())
+	if err != nil {
+		return money.Amount{}, err
+	}
+	return money.NewAmount(c, d)
+}
+
+// This is an example of how to a parse a monetary amount
+// formatted according to Stripe API specification.
+func Example_parsingStripe() {
+	a, err := ParseStripe("usd", -1234)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(a)
+	// Output: USD -12.34
+}
+
 func ExampleMustNewAmount() {
 	c := money.USD
 	d := decimal.MustNew(12345, 2)
@@ -551,6 +636,28 @@ func ExampleAmount_Quo() {
 	e := decimal.MustParse("2")
 	fmt.Println(a.Quo(e))
 	// Output: USD -7.835 <nil>
+}
+
+func ExampleDecimal_QuoRem() {
+	a := money.MustParseAmount("USD", "-15.67")
+	e := decimal.MustParse("2")
+	fmt.Println(a.QuoRem(e))
+	// Output: USD -7.83 USD -0.01 <nil>
+}
+
+func ExampleAmount_Split() {
+	a := money.MustParseAmount("USD", "1.01")
+	fmt.Println(a.Split(5))
+	fmt.Println(a.Split(4))
+	fmt.Println(a.Split(3))
+	fmt.Println(a.Split(2))
+	fmt.Println(a.Split(1))
+	// Output:
+	// [USD 0.21 USD 0.20 USD 0.20 USD 0.20 USD 0.20] <nil>
+	// [USD 0.26 USD 0.25 USD 0.25 USD 0.25] <nil>
+	// [USD 0.34 USD 0.34 USD 0.33] <nil>
+	// [USD 0.51 USD 0.50] <nil>
+	// [USD 1.01] <nil>
 }
 
 func ExampleAmount_Rat() {
@@ -788,21 +895,6 @@ func ExampleAmount_Scale() {
 	// 3
 }
 
-func ExampleAmount_Split() {
-	a := money.MustParseAmount("USD", "1.01")
-	fmt.Println(a.Split(5))
-	fmt.Println(a.Split(4))
-	fmt.Println(a.Split(3))
-	fmt.Println(a.Split(2))
-	fmt.Println(a.Split(1))
-	// Output:
-	// [USD 0.21 USD 0.20 USD 0.20 USD 0.20 USD 0.20] <nil>
-	// [USD 0.26 USD 0.25 USD 0.25 USD 0.25] <nil>
-	// [USD 0.34 USD 0.34 USD 0.33] <nil>
-	// [USD 0.51 USD 0.50] <nil>
-	// [USD 1.01] <nil>
-}
-
 func ExampleAmount_Format() {
 	a := money.MustParseAmount("USD", "-123.456")
 	fmt.Printf("%v\n", a)
@@ -1014,91 +1106,6 @@ func ExampleCurrency_Format() {
 	fmt.Printf("%c\n", money.USD)
 	// Output:
 	// USD
-}
-
-func ParseISO8583(s string) (money.Amount, error) {
-	// Currency
-	c, err := money.ParseCurr(s[:3])
-	if err != nil {
-		return money.Amount{}, err
-	}
-	// Amount
-	n, err := strconv.ParseInt(s[4:], 10, 64)
-	if err != nil {
-		return money.Amount{}, err
-	}
-	d, err := decimal.New(n, c.Scale())
-	if err != nil {
-		return money.Amount{}, err
-	}
-	// Sign
-	if s[3:4] == "D" {
-		d = d.Neg()
-	}
-	return money.NewAmount(c, d)
-}
-
-// In this example, we parse the string "840D000000001234", which represents -12.34 USD,
-// according to the specification for "DE54, Additional Amounts" in ISO 8583.
-func ExampleNewAmount_iso8583() {
-	a, err := ParseISO8583("840D000000001234")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(a)
-	// Output: USD -12.34
-}
-
-func ParseMoneyProto(curr string, units int64, nanos int32) (money.Amount, error) {
-	// Currency
-	c, err := money.ParseCurr(curr)
-	if err != nil {
-		return money.Amount{}, err
-	}
-	// Amount
-	d, err := decimal.NewFromInt64(units, int64(nanos), 9)
-	if err != nil {
-		return money.Amount{}, err
-	}
-	d = d.Trim(c.Scale())
-	return money.NewAmount(c, d)
-}
-
-// This is an example of how to a parse a monetary amount formatted as [MoneyProto].
-//
-// [MoneyProto]: https://github.com/googleapis/googleapis/blob/master/google/type/money.proto
-func ExampleNewAmount_protobuf() {
-	a, err := ParseMoneyProto("840", -12, -340000000)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(a)
-	// Output: USD -12.34
-}
-
-func ParseStripe(currency string, amount int64) (money.Amount, error) {
-	// Currency
-	c, err := money.ParseCurr(currency)
-	if err != nil {
-		return money.Amount{}, err
-	}
-	// Amount
-	d, err := decimal.New(amount, c.Scale())
-	if err != nil {
-		return money.Amount{}, err
-	}
-	return money.NewAmount(c, d)
-}
-
-// This is an example of how to a parse a monetary amount
-// formatted according to Stripe API specification.
-func ExampleNewAmount_stripe() {
-	a, err := ParseStripe("usd", -1234)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(a)
-	// Output: USD -12.34
 }
 
 func ExampleAmount_Zero() {

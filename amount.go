@@ -299,6 +299,40 @@ func (a Amount) Quo(e decimal.Decimal) (Amount, error) {
 	return NewAmount(a.Curr(), d)
 }
 
+// QuoRem returns the quotient q and remainder r of decimals d and e
+// such that d = e * q + r, where q has scale equal to the scale of the currency.
+//
+// QuoRem returns an error if:
+//   - the integer part of the quotient q has more than [MaxPrec] digits;
+//   - the divisor e is zero.
+func (a Amount) QuoRem(e decimal.Decimal) (q, r Amount, err error) {
+	q, r, err = a.quoRem(e)
+	if err != nil {
+		return Amount{}, Amount{}, fmt.Errorf("[⌊%q / %v⌋ %q mod %v]: %w", a, e, a, e, err)
+	}
+	return q, r, nil
+}
+
+func (a Amount) quoRem(e decimal.Decimal) (q, r Amount, err error) {
+	// Quotient
+	q, err = a.Quo(e)
+	if err != nil {
+		return Amount{}, Amount{}, err
+	}
+	q = q.Trunc(a.Curr().Scale())
+
+	// Reminder
+	r, err = q.Mul(e)
+	if err != nil {
+		return Amount{}, Amount{}, err
+	}
+	r, err = a.Sub(r)
+	if err != nil {
+		return Amount{}, Amount{}, err
+	}
+	return q, r, nil
+}
+
 // Rat returns the (possibly rounded) ratio between amounts a and b.
 // This method is particularly useful for calculating exchange rates between
 // two currencies or determining percentages within a single currency.
@@ -323,6 +357,14 @@ func (a Amount) Rat(b Amount) (decimal.Decimal, error) {
 //
 // Split returns an error if the number of parts is not a positive integer.
 func (a Amount) Split(parts int) ([]Amount, error) {
+	r, err := a.split(parts)
+	if err != nil {
+		return nil, fmt.Errorf("splitting %q into %v parts: %w", a, parts, err)
+	}
+	return r, nil
+}
+
+func (a Amount) split(parts int) ([]Amount, error) {
 	// Parts
 	div, err := decimal.New(int64(parts), 0)
 	if err != nil {
@@ -350,7 +392,7 @@ func (a Amount) Split(parts int) ([]Amount, error) {
 	}
 	ulp := rem.ULP().CopySign(rem)
 
-	// Distribute remainder
+	// Reminder distribution
 	res := make([]Amount, parts)
 	for i := 0; i < parts; i++ {
 		res[i] = quo
@@ -365,7 +407,6 @@ func (a Amount) Split(parts int) ([]Amount, error) {
 			}
 		}
 	}
-
 	return res, nil
 }
 
