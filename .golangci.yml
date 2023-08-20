@@ -8,8 +8,12 @@ linters:
     - goimports
     - govet
     - ineffassign
+    - godot
+    - gosec
     - misspell
+    - stylecheck
     - revive
     - staticcheck
     - typecheck
     - unused
+    - gocyclo

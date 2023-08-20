@@ -6,8 +6,7 @@ import (
 )
 
 func TestCurrency_Parse(t *testing.T) {
-
-	t.Run("valid", func(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
 		tests := []struct {
 			code string
 			want Currency
@@ -37,7 +36,7 @@ func TestCurrency_Parse(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid", func(t *testing.T) {
+	t.Run("error", func(t *testing.T) {
 		tests := []string{
 			"", "000", "test", "xbt", "$", "AU$", "BTC",
 		}
@@ -157,4 +156,14 @@ func TestCurrency_Format(t *testing.T) {
 			t.Errorf("fmt.Sprintf(%q, %v) = %q, want %q", tt.format, tt.curr, got, tt.want)
 		}
 	}
+}
+
+func TestCurrency_Scan(t *testing.T) {
+	t.Run("error", func(t *testing.T) {
+		c := XXX
+		err := c.Scan([]byte("USD"))
+		if err == nil {
+			t.Errorf("c.Scan([]byte(\"USD\")) did not fail")
+		}
+	})
 }

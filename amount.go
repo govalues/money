@@ -161,7 +161,7 @@ func (a Amount) Neg() Amount {
 }
 
 // CopySign returns the amount with the same sign as amount b.
-// If amount b is zero, the sign of the result remains unchanged.
+// Zero is always treated as positive.
 func (a Amount) CopySign(b Amount) Amount {
 	d, e := a.value, b.value
 	return newAmountUnsafe(a.Curr(), d.CopySign(e))
@@ -572,7 +572,7 @@ func (a Amount) SameScale(b Amount) bool {
 }
 
 // SameScaleAsCurr returns true if the scale of the amount matches the scale of its currency.
-// See also method [Amount.RoundToCurr].
+// See also methods [Amount.Scale] and [Currency.Scale].
 func (a Amount) SameScaleAsCurr() bool {
 	return a.Scale() == a.Curr().Scale()
 }
@@ -667,6 +667,8 @@ func (a Amount) Max(b Amount) (Amount, error) {
 //
 // [format verbs]: https://pkg.go.dev/fmt#hdr-Printing
 // [fmt.Formatter]: https://pkg.go.dev/fmt#Formatter
+//
+//gocyclo:ignore
 func (a Amount) Format(state fmt.State, verb rune) {
 	// Rescaling
 	tzeroes := 0
@@ -732,13 +734,13 @@ func (a Amount) Format(state fmt.State, verb rune) {
 	}
 	currlen := len(curr)
 
-	// Quotes
+	// Opening and closing quotes
 	lquote, tquote := 0, 0
 	if verb == 'q' || verb == 'Q' {
 		lquote, tquote = 1, 1
 	}
 
-	// Padding
+	// Calculating padding
 	width := lquote + rsign + intdigs + dpoint + fracdigs + tzeroes + currlen + tquote
 	lspaces, lzeroes, tspaces := 0, 0, 0
 	if w, ok := state.Width(); ok && w > width {
@@ -753,40 +755,55 @@ func (a Amount) Format(state fmt.State, verb rune) {
 		width = w
 	}
 
-	// Writing buffer
 	buf := make([]byte, width)
 	pos := width - 1
+
+	// Trailing spaces
 	for i := 0; i < tspaces; i++ {
 		buf[pos] = ' '
 		pos--
 	}
+
+	// Closing quote
 	if tquote > 0 {
 		buf[pos] = '"'
 		pos--
 	}
+
+	// Trailing zeroes
 	for i := 0; i < tzeroes; i++ {
 		buf[pos] = '0'
 		pos--
 	}
+
+	// Fractional digits
 	coef := a.Coef()
 	for i := 0; i < fracdigs; i++ {
 		buf[pos] = byte(coef%10) + '0'
 		pos--
 		coef /= 10
 	}
+
+	// Decimal point
 	if dpoint > 0 {
 		buf[pos] = '.'
 		pos--
 	}
+
+	// Integer digits
 	for i := 0; i < intdigs; i++ {
 		buf[pos] = byte(coef%10) + '0'
 		pos--
 		coef /= 10
 	}
+
+	// Leading zeroes
 	for i := 0; i < lzeroes; i++ {
 		buf[pos] = '0'
 		pos--
 	}
+
+	// Arithmetic sign
 	if rsign > 0 {
 		if a.IsNeg() {
 			buf[pos] = '-'
@@ -797,14 +814,20 @@ func (a Amount) Format(state fmt.State, verb rune) {
 		}
 		pos--
 	}
+
+	// Currency symbols
 	for i := currlen; i > 0; i-- {
 		buf[pos] = curr[i-1]
 		pos--
 	}
+
+	// Opening quote
 	if lquote > 0 {
 		buf[pos] = '"'
 		pos--
 	}
+
+	// Leading spaces
 	for i := 0; i < lspaces; i++ {
 		buf[pos] = ' '
 		pos--

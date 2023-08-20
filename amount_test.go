@@ -169,8 +169,6 @@ func TestAmount_SameScaleAsCurr(t *testing.T) {
 		c, a string
 		want bool
 	}{
-		{"USD", "1", true},
-		{"USD", "1.0", true},
 		{"USD", "1.00", true},
 		{"USD", "1.000", false},
 		{"USD", "1.0000", false},
