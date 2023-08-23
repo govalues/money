@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.3] - 2023-08-21
+
+### Added
+
+- Implemented `Currency.Scan` and `Currency.Value`.
+
+### Changed
+
+- `Amount.CopySign` treats 0 as a positive.
+- Enabled `gocyclo`, `gosec`, `godot`, and `stylecheck` linters.
+
 ## [0.1.2] - 2023-08-15
 
 ### Added

@@ -1,6 +1,7 @@
 package money
 
 import (
+	"database/sql/driver"
 	"errors"
 	"fmt"
 )
@@ -20,9 +21,7 @@ import (
 // index and a particular currency may change in future versions.
 type Currency uint8
 
-var (
-	errUnknownCurrency = errors.New("unknown currency")
-)
+var errUnknownCurrency = errors.New("unknown currency")
 
 // ParseCurr converts a string to currency.
 // The input string must be in one of the following formats:
@@ -48,16 +47,6 @@ func MustParseCurr(curr string) Currency {
 		panic(fmt.Sprintf("MustParseCurr(%q) failed: %v", curr, err))
 	}
 	return c
-}
-
-// UnmarshalText implements [encoding.TextUnmarshaler] interface.
-// Also see method [ParseCurr].
-//
-// [encoding.TextUnmarshaler]: https://pkg.go.dev/encoding#TextUnmarshaler
-func (c *Currency) UnmarshalText(text []byte) error {
-	var err error
-	*c, err = ParseCurr(string(text))
-	return err
 }
 
 // Scale returns the number of digits after the decimal point required for
@@ -96,6 +85,16 @@ func (c Currency) String() string {
 	return c.Code()
 }
 
+// UnmarshalText implements [encoding.TextUnmarshaler] interface.
+// Also see method [ParseCurr].
+//
+// [encoding.TextUnmarshaler]: https://pkg.go.dev/encoding#TextUnmarshaler
+func (c *Currency) UnmarshalText(text []byte) error {
+	var err error
+	*c, err = ParseCurr(string(text))
+	return err
+}
+
 // MarshalText implements [encoding.TextMarshaler] interface.
 // Also see method [Currency.String].
 //
@@ -104,7 +103,30 @@ func (c Currency) MarshalText() ([]byte, error) {
 	return []byte(c.String()), nil
 }
 
-// Format implements [fmt.Formatter] interface.
+// Scan implements the [sql.Scanner] interface.
+// See also method [ParseCurr].
+//
+// [sql.Scanner]: https://pkg.go.dev/database/sql#Scanner
+func (c *Currency) Scan(v any) error {
+	var err error
+	switch v := v.(type) {
+	case string:
+		*c, err = ParseCurr(v)
+	default:
+		err = fmt.Errorf("failed to convert from %T to %T", v, XXX)
+	}
+	return err
+}
+
+// Value implements the [driver.Valuer] interface.
+// See also method [Currency.String].
+//
+// [driver.Valuer]: https://pkg.go.dev/database/sql/driver#Valuer
+func (c Currency) Value() (driver.Value, error) {
+	return c.String(), nil
+}
+
+// Format implements the [fmt.Formatter] interface.
 // The following [verbs] are available:
 //
 //	%s, %v: USD
@@ -116,18 +138,17 @@ func (c Currency) MarshalText() ([]byte, error) {
 // [verbs]: https://pkg.go.dev/fmt#hdr-Printing
 // [fmt.Formatter]: https://pkg.go.dev/fmt#Formatter
 func (c Currency) Format(state fmt.State, verb rune) {
-
 	// Currency symbols
 	curr := c.Code()
 	currlen := len(curr)
 
-	// Quotes
+	// Opening and closing quotes
 	lquote, tquote := 0, 0
 	if verb == 'q' || verb == 'Q' {
 		lquote, tquote = 1, 1
 	}
 
-	// Padding
+	// Calculating padding
 	width := lquote + currlen + tquote
 	lspaces, tspaces := 0, 0
 	if w, ok := state.Width(); ok && w > width {
@@ -140,25 +161,34 @@ func (c Currency) Format(state fmt.State, verb rune) {
 		width = w
 	}
 
-	// Writing buffer
 	buf := make([]byte, width)
 	pos := width - 1
+
+	// Trailing spaces
 	for i := 0; i < tspaces; i++ {
 		buf[pos] = ' '
 		pos--
 	}
+
+	// Closing quote
 	if tquote > 0 {
 		buf[pos] = '"'
 		pos--
 	}
+
+	// Currency symbols
 	for i := currlen; i > 0; i-- {
 		buf[pos] = curr[i-1]
 		pos--
 	}
+
+	// Opening quote
 	if lquote > 0 {
 		buf[pos] = '"'
 		pos--
 	}
+
+	// Leading spaces
 	for i := 0; i < lspaces; i++ {
 		buf[pos] = ' '
 		pos--

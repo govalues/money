@@ -237,7 +237,7 @@ func (r ExchangeRate) String() string {
 	return r.Base().String() + "/" + r.Quote().String() + " " + r.value.String()
 }
 
-// Format implements [fmt.Formatter] interface.
+// Format implements the [fmt.Formatter] interface.
 // The following [format verbs] are available:
 //
 //	%s, %v: USD/EUR 1.2345
@@ -253,6 +253,8 @@ func (r ExchangeRate) String() string {
 //
 // [format verbs]: https://pkg.go.dev/fmt#hdr-Printing
 // [fmt.Formatter]: https://pkg.go.dev/fmt#Formatter
+//
+//gocyclo:ignore
 func (r ExchangeRate) Format(state fmt.State, verb rune) {
 	// Rescaling
 	tzeroes := 0
@@ -274,7 +276,6 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 
 	// Integer and fractional digits
 	intdigs, fracdigs := 0, 0
-
 	switch rprec := r.Prec(); verb {
 	case 'c', 'C':
 		// skip
@@ -306,13 +307,13 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 	}
 	currlen := len(curr)
 
-	// Quotes
+	// Opening and closing quotes
 	lquote, tquote := 0, 0
 	if verb == 'q' || verb == 'Q' {
 		lquote, tquote = 1, 1
 	}
 
-	// Padding
+	// Calculating padding
 	width := lquote + intdigs + dpoint + fracdigs + tzeroes + currlen + tquote
 	lspaces, lzeroes, tspaces := 0, 0, 0
 	if w, ok := state.Width(); ok && w > width {
@@ -327,48 +328,67 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 		width = w
 	}
 
-	// Writing buffer
 	buf := make([]byte, width)
 	pos := width - 1
+
+	// Trailing spaces
 	for i := 0; i < tspaces; i++ {
 		buf[pos] = ' '
 		pos--
 	}
+
+	// Closing quote
 	if tquote > 0 {
 		buf[pos] = '"'
 		pos--
 	}
+
+	// Trailing zeroes
 	for i := 0; i < tzeroes; i++ {
 		buf[pos] = '0'
 		pos--
 	}
+
+	// Fractional digits
 	coef := r.value.Coef()
 	for i := 0; i < fracdigs; i++ {
 		buf[pos] = byte(coef%10) + '0'
 		pos--
 		coef /= 10
 	}
+
+	// Decimal point
 	if dpoint > 0 {
 		buf[pos] = '.'
 		pos--
 	}
+
+	// Integer digits
 	for i := 0; i < intdigs; i++ {
 		buf[pos] = byte(coef%10) + '0'
 		pos--
 		coef /= 10
 	}
+
+	// Leading zeroes
 	for i := 0; i < lzeroes; i++ {
 		buf[pos] = '0'
 		pos--
 	}
+
+	// Currency symbols
 	for i := currlen; i > 0; i-- {
 		buf[pos] = curr[i-1]
 		pos--
 	}
+
+	// Opening quote
 	if lquote > 0 {
 		buf[pos] = '"'
 		pos--
 	}
+
+	// Leading spaces
 	for i := 0; i < lspaces; i++ {
 		buf[pos] = ' '
 		pos--

@@ -3,8 +3,8 @@
 [![githubb]][github]
 [![codecovb]][codecov]
 [![goreportb]][goreport]
-[![licenseb]][license]
 [![godocb]][godoc]
+[![licenseb]][license]
 [![versionb]][version]
 
 Package money implements immutable monetary amounts for Go.

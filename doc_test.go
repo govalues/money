@@ -89,7 +89,7 @@ func (s Statement) OutgoingBalance() (money.Amount, error) {
 	return s[len(s)-1].Balance, nil
 }
 
-// PercChange method calculates (OutgoingBalance - IncomingBalance) / IncomingBalance
+// PercChange method calculates (OutgoingBalance - IncomingBalance) / IncomingBalance.
 func (s Statement) PercChange() (decimal.Decimal, error) {
 	inc, err := s.IncomingBalance()
 	if err != nil {
@@ -296,7 +296,7 @@ func MonthlyRate(yearlyRate decimal.Decimal) (decimal.Decimal, error) {
 	return yearlyRate.Quo(monthsInYear)
 }
 
-// AnnuityPayment function calculates Amount * Rate / (1 - (1 + Rate)^(-Periods))
+// AnnuityPayment function calculates Amount * Rate / (1 - (1 + Rate)^(-Periods)).
 func AnnuityPayment(amount money.Amount, rate decimal.Decimal, periods int) (money.Amount, error) {
 	one := rate.One()
 	// Numerator
@@ -638,7 +638,7 @@ func ExampleAmount_Quo() {
 	// Output: USD -7.835 <nil>
 }
 
-func ExampleDecimal_QuoRem() {
+func ExampleAmount_QuoRem() {
 	a := money.MustParseAmount("USD", "-15.67")
 	e := decimal.MustParse("2")
 	fmt.Println(a.QuoRem(e))
@@ -1081,6 +1081,17 @@ func ExampleCurrency_Scale() {
 	// 3
 }
 
+func ExampleCurrency_UnmarshalText() {
+	c := money.XXX
+	b := []byte("USD")
+	err := c.UnmarshalText(b)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(c)
+	// Output: USD
+}
+
 func ExampleCurrency_MarshalText() {
 	c := money.MustParseCurr("USD")
 	b, err := c.MarshalText()
@@ -1091,14 +1102,23 @@ func ExampleCurrency_MarshalText() {
 	// Output: USD
 }
 
-func ExampleCurrency_UnmarshalText() {
+func ExampleCurrency_Scan() {
 	c := money.XXX
-	b := []byte("USD")
-	err := c.UnmarshalText(b)
+	err := c.Scan("USD")
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println(c)
+	// Output: USD
+}
+
+func ExampleCurrency_Value() {
+	c := money.MustParseCurr("USD")
+	v, err := c.Value()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(v)
 	// Output: USD
 }
 
