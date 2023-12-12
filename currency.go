@@ -57,7 +57,7 @@ func MustParseCurr(curr string) Currency {
 //
 // [ratio]: https://en.wikipedia.org/wiki/ISO_4217#Minor_unit_fractions
 func (c Currency) Scale() int {
-	return scaleLookup[c]
+	return int(scaleLookup[c])
 }
 
 // Num returns the [3-digit code] assigned to the currency by the ISO 4217 standard.
@@ -127,15 +127,16 @@ func (c Currency) Value() (driver.Value, error) {
 }
 
 // Format implements the [fmt.Formatter] interface.
-// The following [verbs] are available:
+// The following [format verbs] are available:
 //
-//	%s, %v: USD
-//	%q:    "USD"
-//	%c:     USD
+//	| Verb       | Example | Description     |
+//	| ---------- | ------- | --------------- |
+//	| %c, %s, %v | USD     | Currency        |
+//	| %q         | "USD"   | Quoted currency |
 //
 // The '-' format flag can be used with all verbs.
 //
-// [verbs]: https://pkg.go.dev/fmt#hdr-Printing
+// [format verbs]: https://pkg.go.dev/fmt#hdr-Printing
 // [fmt.Formatter]: https://pkg.go.dev/fmt#Formatter
 func (c Currency) Format(state fmt.State, verb rune) {
 	// Currency symbols
@@ -205,4 +206,43 @@ func (c Currency) Format(state fmt.State, verb rune) {
 		state.Write(buf)
 		state.Write([]byte(")"))
 	}
+}
+
+// NullCurrency represents a currency that can be null.
+// Its zero value is null.
+// NullCurrency is not thread-safe.
+type NullCurrency struct {
+	Currency Currency
+	Valid    bool
+}
+
+// Scan implements the [sql.Scanner] interface.
+// See also method [ParseCurr].
+//
+// [sql.Scanner]: https://pkg.go.dev/database/sql#Scanner
+func (n *NullCurrency) Scan(value any) error {
+	if value == nil {
+		n.Currency = XXX
+		n.Valid = false
+		return nil
+	}
+	err := n.Currency.Scan(value)
+	if err != nil {
+		n.Currency = XXX
+		n.Valid = false
+		return err
+	}
+	n.Valid = true
+	return nil
+}
+
+// Value implements the [driver.Valuer] interface.
+// See also method [Currency.String].
+//
+// [driver.Valuer]: https://pkg.go.dev/database/sql/driver#Valuer
+func (n NullCurrency) Value() (driver.Value, error) {
+	if !n.Valid {
+		return nil, nil
+	}
+	return n.Currency.Value()
 }

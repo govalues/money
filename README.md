@@ -1,4 +1,4 @@
-# Money
+# money
 
 [![githubb]][github]
 [![codecovb]][codecov]
@@ -6,73 +6,96 @@
 [![godocb]][godoc]
 [![licenseb]][license]
 [![versionb]][version]
+[![awesomeb]][awesome]
 
 Package money implements immutable monetary amounts for Go.
 
 ## Getting started
 
-To install the money package into your Go workspace, you can use the go get command:
+### Installation
+
+To add the money package to your Go workspace:
 
 ```bash
 go get github.com/govalues/money
 ```
 
-To use the money package in your Go project, you can import it as follows:
+### Usage
+
+Create amount using one of the constructors.
+After creating a monetary amount, various operations can be performed:
 
 ```go
+package main
+
 import (
+    "fmt"
     "github.com/govalues/decimal"
     "github.com/govalues/money"
 )
+
+func main() {
+    x, _ := decimal.New(2, 0)                          // x = 2
+
+    // Constructors
+    a, _ := money.NewAmount("USD", 8, 0)               // a = USD 8.00
+    b, _ := money.ParseAmount("USD", "12.5")           // b = USD 12.50
+    c, _ := money.NewAmountFromFloat64("USD", 2.567)   // c = USD 2.567
+    d, _ := money.NewAmountFromInt64("USD", 7, 896, 3) // d = USD 7.896
+    r, _ := money.NewExchRate("USD", "EUR", 9, 1)      // r = USD/EUR 0.9
+
+    // Operations
+    fmt.Println(a.Add(b))          // USD 8.00 + USD 12.50
+    fmt.Println(a.Sub(b))          // USD 8.00 - USD 12.50
+
+    fmt.Println(a.Mul(x))          // USD 8.00 * 2
+    fmt.Println(a.FMA(x, b))       // USD 8.00 * 2 + USD 12.50
+    fmt.Println(r.Conv(a))         // USD/EUR 0.9 * USD 8.00
+
+    fmt.Println(a.Quo(x))          // USD 8.00 / 2
+    fmt.Println(a.QuoRem(x))       // USD 8.00 div 2, USD 8.00 mod 2
+    fmt.Println(a.Rat(b))          // USD 8.00 / USD 12.50
+    fmt.Println(a.Split(3))        // USD 8.00 into 3 parts
+
+    // Rounding to 2 decimal places
+    fmt.Println(c.RoundToCurr())   // 2.57
+    fmt.Println(c.CeilToCurr())    // 2.57
+    fmt.Println(c.FloorToCurr())   // 2.56
+    fmt.Println(c.TruncToCurr())   // 2.56
+
+    // Conversions
+    fmt.Println(d.Int64(9))        // 7 896000000
+    fmt.Println(d.Float64())       // 7.896
+    fmt.Println(d.String())        // USD 7.896
+
+    // Formatting
+    fmt.Printf("%v\n", d)          // USD 7.896
+    fmt.Printf("%[1]f %[1]c\n", d) // 7.896 USD
+    fmt.Printf("%f\n", d)          // 7.896
+    fmt.Printf("%c\n", d)          // USD
+    fmt.Printf("%d\n", d)          // 790
+}
 ```
 
-## Using Amount
+## Documentation
 
-To create a new amount, you can use one of the provided constructors,
-such as `NewAmount`, `MustNewAmount`, `ParseAmount` or `MustParseAmount`.
+For detailed documentation and additional examples, visit the package
+[documentation](https://pkg.go.dev/github.com/govalues/money#pkg-examples).
 
-```go
-d := decimal.MustNew(12345, 2)              // d = 123.45
-a := money.MustNewAmount(money.USD, d)      // a = USD 123.45
-b := money.MustParseAmount("USD", "123.45") // b = USD 123.45
-```
+## Contributing
 
-Once you have an amount, you can perform arithmetic operations such as
-addition, subtraction, multiplication, division, as well
-as rounding operations such as ceiling, floor, truncation, and rounding.
+Interested in contributing? Here's how to get started:
 
-```go
-sum, _ := a.Add(b)
-difference, _ := a.Sub(b)
-product, _ := a.Mul(d)
-quotient, _ := a.Quo(d)
-ratio, _ := a.Rat(b)
-ceil := a.Ceil(2)
-floor := a.Floor(2)
-trunc := a.Trunc(2)
-round := a.Round(2)
-```
+1. Fork and clone the repository.
+1. Implement your changes.
+1. Write tests to cover your changes.
+1. Ensure all tests pass with `go test`.
+1. Commit and push to your fork.
+1. Open a pull request detailing your changes.
 
-For more details on these and other methods, see the package documentation at [pkg.go.dev](https://pkg.go.dev/github.com/govalues/money).
-
-## Benchmarks
-
-For the benchmark results please check description of [decimal](https://github.com/govalues/decimal) package.
-
-## Contributing to the project
-
-The money package is hosted on [GitHub](https://github.com/govalues/money).
-To contribute to the project, follow these steps:
-
- 1. Fork the repository and clone it to your local machine.
- 1. Make the desired changes to the code.
- 1. Write tests for the changes you made.
- 1. Ensure that all tests pass by running `go test`.
- 1. Commit the changes and push them to your fork.
- 1. Submit a pull request with a clear description of the changes you made.
- 1. Wait for the maintainers to review and merge your changes.
-
-Note: Before making any significant changes to the code, it is recommended to open an issue to discuss the proposed changes with the maintainers. This will help to ensure that the changes align with the project's goals and roadmap.
+**Note**: If you're considering significant changes, please open an issue first to
+discuss with the maintainers.
+This ensures alignment with the project's objectives and roadmap.
 
 [codecov]: https://codecov.io/gh/govalues/money
 [codecovb]: https://img.shields.io/codecov/c/github/govalues/money/main?color=brightcolor
@@ -86,3 +109,5 @@ Note: Before making any significant changes to the code, it is recommended to op
 [versionb]: https://img.shields.io/github/go-mod/go-version/govalues/money?label=go
 [license]: https://en.wikipedia.org/wiki/MIT_License
 [licenseb]: https://img.shields.io/github/license/govalues/money?color=blue
+[awesome]: https://github.com/avelino/awesome-go#financial
+[awesomeb]: https://awesome.re/mentioned-badge.svg
