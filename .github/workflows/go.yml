@@ -9,8 +9,7 @@ jobs:
     strategy:
       matrix:
         go-version: [oldstable, stable]
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
 
     - name: Setup Go
@@ -37,4 +36,5 @@ jobs:
       run: go test -race -shuffle=on -coverprofile="coverage.txt" -covermode=atomic ./...
 
     - name: Upload test coverage
+      if: matrix.go-version == 'stable'
       uses: codecov/codecov-action@v3

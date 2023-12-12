@@ -2,6 +2,7 @@ package money
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"unsafe"
 
@@ -19,7 +20,7 @@ func TestExchangeRate_ZeroValue(t *testing.T) {
 		t.Errorf("ExchangeRate{}.Quote() = %v, want %v", got.Quote(), XXX)
 	}
 	if !got.IsZero() {
-		t.Errorf("ExchangeRate{}.value.IsZero() = %v, want %v", got.IsZero(), true)
+		t.Errorf("ExchangeRate{}.IsZero() = %v, want %v", got.IsZero(), true)
 	}
 }
 
@@ -32,7 +33,212 @@ func TestExchangeRate_Sizeof(t *testing.T) {
 	}
 }
 
+func TestMustNewExchRate(t *testing.T) {
+	t.Run("error", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("MustNewExchRate(\"EUR\", \"USD\", 0, -1) did not panic")
+			}
+		}()
+		MustNewExchRate("EUR", "USD", 0, -1)
+	})
+}
+
+func TestMustParseExchRate(t *testing.T) {
+	t.Run("error", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("MustParseExchRate(\"EUR\", \"USD\", \".\") did not panic")
+			}
+		}()
+		MustParseExchRate("EUR", "USD", ".")
+	})
+}
+
 func TestNewExchRate(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			base, quote string
+			coef        int64
+			scale       int
+			want        string
+		}{
+			{"EUR", "JPY", math.MaxInt64, 0, "9223372036854775807"},
+			{"EUR", "JPY", math.MaxInt64, 19, "0.9223372036854775807"},
+			{"EUR", "USD", math.MaxInt64, 2, "92233720368547758.07"},
+			{"EUR", "USD", math.MaxInt64, 19, "0.9223372036854775807"},
+			{"EUR", "OMR", math.MaxInt64, 3, "9223372036854775.807"},
+			{"EUR", "OMR", math.MaxInt64, 19, "0.9223372036854775807"},
+		}
+		for _, tt := range tests {
+			got, err := NewExchRate(tt.base, tt.quote, tt.coef, tt.scale)
+			if err != nil {
+				t.Errorf("NewExchRate(%q, %q, %v, %v) failed: %v", tt.base, tt.quote, tt.coef, tt.scale, err)
+				continue
+			}
+			want := MustParseExchRate(tt.base, tt.quote, tt.want)
+			if got != want {
+				t.Errorf("NewExchRate(%q, %q, %v, %v) = %q, want %q", tt.base, tt.quote, tt.coef, tt.scale, got, want)
+			}
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		tests := map[string]struct {
+			base, quote string
+			coef        int64
+			scale       int
+		}{
+			"base currency 1":  {"EEE", "USD", 1, 0},
+			"quote currency 1": {"EUR", "UUU", 1, 0},
+			"scale range 1":    {"EUR", "USD", 1, -1},
+			"scale range 2":    {"EUR", "USD", 1, 20},
+			"coefficient 1":    {"EUR", "USD", 0, 0},
+			"coefficient 2":    {"EUR", "USD", -1, 0},
+			"coefficient 3":    {"EUR", "EUR", 2, 0},
+			"overflow 1":       {"EUR", "USD", math.MaxInt64, 0},
+			"overflow 2":       {"EUR", "USD", math.MaxInt64, 1},
+			"overflow 3":       {"EUR", "USD", math.MinInt64, 0},
+			"overflow 4":       {"EUR", "USD", math.MinInt64, 1},
+			"overflow 5":       {"EUR", "OMR", math.MaxInt64, 0},
+			"overflow 6":       {"EUR", "OMR", math.MaxInt64, 1},
+			"overflow 7":       {"EUR", "OMR", math.MaxInt64, 2},
+			"overflow 8":       {"EUR", "OMR", math.MinInt64, 0},
+			"overflow 9":       {"EUR", "OMR", math.MinInt64, 1},
+			"overflow 10":      {"EUR", "OMR", math.MinInt64, 2},
+		}
+		for _, tt := range tests {
+			_, err := NewExchRate(tt.base, tt.quote, tt.coef, tt.scale)
+			if err == nil {
+				t.Errorf("NewExchRate(%q, %q, %v, %v) did not fail", tt.base, tt.quote, tt.coef, tt.scale)
+			}
+		}
+	})
+}
+
+func TestNewExchRateFromInt64(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			base, quote string
+			whole, frac int64
+			scale       int
+			want        string
+		}{
+			{"EUR", "USD", 1, 1, 1, "1.10"},
+			{"EUR", "USD", 1, 1, 2, "1.01"},
+			{"EUR", "USD", 1, 1, 3, "1.001"},
+			{"EUR", "USD", 1, 100000000, 9, "1.10"},
+			{"EUR", "USD", 1, 1, 18, "1.000000000000000001"},
+			{"EUR", "USD", 1, 1, 19, "1.000000000000000000"},
+			{"EUR", "JPY", math.MaxInt64, math.MaxInt32, 10, "9223372036854775807"},
+			{"EUR", "JPY", math.MaxInt64, math.MaxInt64, 19, "9223372036854775808"},
+		}
+		for _, tt := range tests {
+			got, err := NewExchRateFromInt64(tt.base, tt.quote, tt.whole, tt.frac, tt.scale)
+			if err != nil {
+				t.Errorf("NewExchRateFromInt64(%q, %q, %v, %v, %v) failed: %v", tt.base, tt.quote, tt.whole, tt.frac, tt.scale, err)
+				continue
+			}
+			want := MustParseExchRate(tt.base, tt.quote, tt.want)
+			if got != want {
+				t.Errorf("NewExchRateFromInt64(%q, %q, %v, %v, %v) = %q, want %q", tt.base, tt.quote, tt.whole, tt.frac, tt.scale, got, want)
+			}
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		tests := map[string]struct {
+			base, quote string
+			whole, frac int64
+			scale       int
+		}{
+			"quote currency 1":  {"EUR", "UUU", 1, 0, 0},
+			"base currency 1":   {"EEE", "USD", 1, 0, 0},
+			"different signs 1": {"EUR", "USD", -1, 1, 0},
+			"fraction range 1":  {"EUR", "USD", 1, 1, 0},
+			"scale range 1":     {"EUR", "USD", 1, 1, -1},
+			"scale range 2":     {"EUR", "USD", 1, 0, -1},
+			"scale range 3":     {"EUR", "USD", 1, 1, 20},
+			"scale range 4":     {"EUR", "USD", 1, 0, 20},
+			"overflow 1":        {"EUR", "USD", 100000000000000000, 100000000000000000, 18},
+			"overflow 2":        {"EUR", "USD", 999999999999999999, 9, 1},
+			"overflow 3":        {"EUR", "USD", 999999999999999999, 99, 2},
+			"overflow 4":        {"EUR", "USD", math.MaxInt64, math.MaxInt32, 10},
+			"overflow 5":        {"EUR", "OMR", math.MaxInt64, math.MaxInt32, 10},
+		}
+		for name, tt := range tests {
+			t.Run(name, func(t *testing.T) {
+				_, err := NewExchRateFromInt64(tt.base, tt.quote, tt.whole, tt.frac, tt.scale)
+				if err == nil {
+					t.Errorf("NewExchRateFromInt64(%q, %q, %v, %v, %v) did not fail", tt.base, tt.quote, tt.whole, tt.frac, tt.scale)
+				}
+			})
+		}
+	})
+}
+
+func TestNewExchRateFromFloat64(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			base, quote string
+			f           float64
+			want        string
+		}{
+			{"EUR", "USD", 1e-19, "0.0000000000000000001"},
+			{"EUR", "USD", 1e-5, "0.00001"},
+			{"EUR", "USD", 1e-4, "0.0001"},
+			{"EUR", "USD", 1e-3, "0.001"},
+			{"EUR", "USD", 1e-2, "0.01"},
+			{"EUR", "USD", 1e-1, "0.1"},
+			{"EUR", "USD", 1e0, "1"},
+			{"EUR", "USD", 1e1, "10"},
+			{"EUR", "USD", 1e2, "100"},
+			{"EUR", "USD", 1e3, "1000"},
+			{"EUR", "USD", 1e4, "10000"},
+			{"EUR", "USD", 1e5, "100000"},
+			{"EUR", "JPY", 1e18, "1000000000000000000"},
+			{"EUR", "USD", 1e16, "10000000000000000"},
+			{"EUR", "OMR", 1e15, "1000000000000000"},
+		}
+		for _, tt := range tests {
+			got, err := NewExchRateFromFloat64(tt.base, tt.quote, tt.f)
+			if err != nil {
+				t.Errorf("NewExchRateFromFloat64(%q, %q, %v) failed: %v", tt.base, tt.quote, tt.f, err)
+				continue
+			}
+			want := MustParseExchRate(tt.base, tt.quote, tt.want)
+			if got != want {
+				t.Errorf("NewExchRateFromFloat64(%q, %q, %v) = %q, want %q", tt.base, tt.quote, tt.f, got, want)
+			}
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		tests := map[string]struct {
+			base, quote string
+			f           float64
+		}{
+			"base currency 1":  {"EEE", "USD", 1},
+			"quote currency 1": {"EUR", "ZZZ", 1},
+			"overflow 1":       {"EUR", "JPY", 1e19},
+			"overflow 2":       {"EUR", "USD", 1e17},
+			"overflow 3":       {"EUR", "OMR", 1e16},
+			"special value 1":  {"EUR", "USD", math.NaN()},
+			"special value 2":  {"EUR", "USD", math.Inf(1)},
+			"special value 3":  {"EUR", "USD", math.Inf(-1)},
+		}
+		for name, tt := range tests {
+			t.Run(name, func(t *testing.T) {
+				_, err := NewExchRateFromFloat64(tt.base, tt.quote, tt.f)
+				if err == nil {
+					t.Errorf("NewExchRateFromFloat64(%q, %q, %v) did not fail", tt.base, tt.quote, tt.f)
+				}
+			})
+		}
+	})
+}
+
+func TestNewExchRateFromDecimal(t *testing.T) {
 	tests := []struct {
 		b, q   Currency
 		r      string
@@ -43,18 +249,18 @@ func TestNewExchRate(t *testing.T) {
 		{USD, USD, "0.9999", false},
 		{USD, USD, "1.0000", true},
 		{USD, USD, "1.0001", false},
-		{USD, JPY, "100000000000000000", false},
-		{USD, EUR, "1000000000000000", false},
-		{USD, OMR, "100000000000000", false},
+		{USD, JPY, "1000000000000000000", true},
+		{USD, EUR, "100000000000000000", false},
+		{USD, OMR, "10000000000000000", false},
 	}
 	for _, tt := range tests {
 		rate := decimal.MustParse(tt.r)
-		_, err := NewExchRate(tt.b, tt.q, rate)
+		_, err := NewExchRateFromDecimal(tt.b, tt.q, rate)
 		if !tt.wantOk && err == nil {
-			t.Errorf("NewExchError(%v, %v, %v) did not fail", tt.b, tt.q, rate)
+			t.Errorf("NewExchRateFromDecimal(%v, %v, %v) did not fail", tt.b, tt.q, rate)
 		}
 		if tt.wantOk && err != nil {
-			t.Errorf("NewExchRate(%v, %v, %v) failed: %v", tt.b, tt.q, rate, err)
+			t.Errorf("NewExchRateFromDecimal(%v, %v, %v) failed: %v", tt.b, tt.q, rate, err)
 		}
 	}
 }
@@ -68,8 +274,8 @@ func TestParseExchRate(t *testing.T) {
 			wantScale           int
 		}{
 			{"USD", "JPY", "132", USD, JPY, 132, 0},
-			{"USD", "EUR", "1.2", USD, EUR, 12000, 4},
-			{"USD", "OMR", "0.38", USD, OMR, 38000, 5},
+			{"USD", "EUR", "1.25", USD, EUR, 125, 2},
+			{"USD", "OMR", "0.38", USD, OMR, 380, 3},
 		}
 		for _, tt := range tests {
 			got, err := ParseExchRate(tt.b, tt.q, tt.r)
@@ -82,7 +288,7 @@ func TestParseExchRate(t *testing.T) {
 				t.Errorf("decimal.New(%v, %v) failed: %v", tt.wantCoef, tt.wantScale, err)
 				continue
 			}
-			want, err := NewExchRate(tt.wantBase, tt.wantQuote, wantRate)
+			want, err := NewExchRateFromDecimal(tt.wantBase, tt.wantQuote, wantRate)
 			if err != nil {
 				t.Errorf("NewExchRate(%v, %v, %v) failed: %v", tt.wantBase, tt.wantQuote, wantRate, err)
 				continue
@@ -97,13 +303,13 @@ func TestParseExchRate(t *testing.T) {
 		tests := map[string]struct {
 			b, q, r string
 		}{
-			"no data": {"", "", ""},
-			"base 1":  {"AAA", "USD", "30000"},
-			"quote 1": {"USD", "AAA", "0.00003"},
-			"rate 1":  {"USD", "EUR", "x.0000"},
-			"rate 2":  {"USD", "USD", "0.9999"},
-			"rate 3":  {"USD", "EUR", "0.0"},
-			"rate 4":  {"USD", "EUR", "-0.9999"},
+			"no data":          {"", "", ""},
+			"base currency 1":  {"AAA", "USD", "30000"},
+			"quote currency 1": {"USD", "AAA", "0.00003"},
+			"invalid rate 1":   {"USD", "EUR", "x.0000"},
+			"invalid rate 2":   {"USD", "USD", "0.9999"},
+			"invalid rate 3":   {"USD", "EUR", "0.0"},
+			"invalid rate 4":   {"USD", "EUR", "-0.9999"},
 		}
 		for _, tt := range tests {
 			_, err := ParseExchRate(tt.b, tt.q, tt.r)
@@ -126,10 +332,10 @@ func TestExchangeRate_Mul(t *testing.T) {
 			{"USD", "EUR", "5", "1", "5"},
 			{"USD", "EUR", "5", "2", "10"},
 			{"USD", "EUR", "1.20", "2", "2.40"},
-			{"USD", "EUR", "5.09", "7.1", "36.13900"},
+			{"USD", "EUR", "5.09", "7.1", "36.139"},
 			{"USD", "EUR", "2.5", "4", "10.0"},
 			{"USD", "EUR", "2.50", "4", "10.00"},
-			{"USD", "EUR", "0.70", "1.05", "0.735000"},
+			{"USD", "EUR", "0.70", "1.05", "0.7350"},
 		}
 		for _, tt := range tests {
 			r := MustParseExchRate(tt.b, tt.q, tt.r)
@@ -150,8 +356,8 @@ func TestExchangeRate_Mul(t *testing.T) {
 		tests := map[string]struct {
 			b, q, r, f string
 		}{
-			"overflow 1": {"USD", "EUR", "0.9", "10000000000000000"},
-			"overflow 2": {"USD", "EUR", "100000000000000", "10"},
+			"overflow 1": {"USD", "EUR", "0.9", "1000000000000000000"},
+			"overflow 2": {"USD", "EUR", "10000000000000000", "10"},
 			"factor 1":   {"USD", "EUR", "0.9", "0.0"},
 			"factor 2":   {"USD", "EUR", "0.9", "-0.1"},
 		}
@@ -194,28 +400,6 @@ func TestExchangeRate_Inv(t *testing.T) {
 			t.Errorf("%q.Inv() did not fail", r)
 		}
 	})
-}
-
-func TestExchangeRate_SameScaleAsCurr(t *testing.T) {
-	tests := []struct {
-		b, q, r string
-		want    bool
-	}{
-		{"USD", "EUR", "1", true},
-		{"USD", "EUR", "1.0", true},
-		{"USD", "EUR", "1.00", true},
-		{"USD", "EUR", "1.000", true},
-		{"USD", "EUR", "1.0000", true},
-		{"USD", "EUR", "1.00000", false},
-		{"USD", "EUR", "1.000000", false},
-	}
-	for _, tt := range tests {
-		r := MustParseExchRate(tt.b, tt.q, tt.r)
-		got := r.SameScaleAsCurr()
-		if got != tt.want {
-			t.Errorf("%q.SameScaleAsCurr() = %v, want %v", r, got, tt.want)
-		}
-	}
 }
 
 func TestExchangeRate_Conv(t *testing.T) {
@@ -268,91 +452,105 @@ func TestExchangeRate_Format(t *testing.T) {
 		b, q, r, format, want string
 	}{
 		// %T verb
-		{"USD", "EUR", "100.00", "%T", "money.ExchangeRate"},
+		{"USD", "EUR", "100.0000", "%T", "money.ExchangeRate"},
 		// %q verb
-		{"USD", "EUR", "100.00", "%q", "\"USD/EUR 100.0000\""},
-		{"USD", "EUR", "100.00", "%+q", "\"USD/EUR 100.0000\""},  // '+' is ignored
-		{"USD", "EUR", "100.00", "% q", "\"USD/EUR 100.0000\""},  // ' ' is ignored
-		{"USD", "EUR", "100.00", "%.6q", "\"USD/EUR 100.0000\""}, // precision is ignored
-		{"USD", "EUR", "100.00", "%16q", "\"USD/EUR 100.0000\""},
-		{"USD", "EUR", "100.00", "%17q", "\"USD/EUR 100.0000\""},
-		{"USD", "EUR", "100.00", "%18q", "\"USD/EUR 100.0000\""},
-		{"USD", "EUR", "100.00", "%19q", " \"USD/EUR 100.0000\""},
-		{"USD", "EUR", "100.00", "%019q", "\"USD/EUR 0100.0000\""},
-		{"USD", "EUR", "100.00", "%+19q", " \"USD/EUR 100.0000\""}, // '+' is ignored
-		{"USD", "EUR", "100.00", "%-19q", "\"USD/EUR 100.0000\" "},
-		{"USD", "EUR", "100.00", "%+-021q", "\"USD/EUR 100.0000\"   "}, // '+' and '0' are ignored
+		{"USD", "EUR", "100.0000", "%q", "\"USD/EUR 100.0000\""},
+		{"USD", "EUR", "100.0000", "%+q", "\"USD/EUR 100.0000\""},  // '+' is ignored
+		{"USD", "EUR", "100.0000", "% q", "\"USD/EUR 100.0000\""},  // ' ' is ignored
+		{"USD", "EUR", "100.0000", "%.6q", "\"USD/EUR 100.0000\""}, // precision is ignored
+		{"USD", "EUR", "100.0000", "%16q", "\"USD/EUR 100.0000\""},
+		{"USD", "EUR", "100.0000", "%17q", "\"USD/EUR 100.0000\""},
+		{"USD", "EUR", "100.0000", "%18q", "\"USD/EUR 100.0000\""},
+		{"USD", "EUR", "100.0000", "%19q", " \"USD/EUR 100.0000\""},
+		{"USD", "EUR", "100.0000", "%019q", "\"USD/EUR 0100.0000\""},
+		{"USD", "EUR", "100.0000", "%+19q", " \"USD/EUR 100.0000\""}, // '+' is ignored
+		{"USD", "EUR", "100.0000", "%-19q", "\"USD/EUR 100.0000\" "},
+		{"USD", "EUR", "100.0000", "%+-021q", "\"USD/EUR 100.0000\"   "}, // '+' and '0' are ignored
 		// %s verb
-		{"USD", "EUR", "100.00", "%s", "USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%+s", "USD/EUR 100.0000"},  // '+' is ignored
-		{"USD", "EUR", "100.00", "% s", "USD/EUR 100.0000"},  // ' ' is ignored
-		{"USD", "EUR", "100.00", "%.6s", "USD/EUR 100.0000"}, // precision is ignored
-		{"USD", "EUR", "100.00", "%16s", "USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%17s", " USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%18s", "  USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%19s", "   USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%019s", "USD/EUR 000100.0000"},
-		{"USD", "EUR", "100.00", "%+19s", "   USD/EUR 100.0000"}, // '+' is ignored
-		{"USD", "EUR", "100.00", "%-19s", "USD/EUR 100.0000   "},
-		{"USD", "EUR", "100.00", "%+-021s", "USD/EUR 100.0000     "}, // '+' and '0' are ignored
+		{"USD", "EUR", "100.0000", "%s", "USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%+s", "USD/EUR 100.0000"},  // '+' is ignored
+		{"USD", "EUR", "100.0000", "% s", "USD/EUR 100.0000"},  // ' ' is ignored
+		{"USD", "EUR", "100.0000", "%.6s", "USD/EUR 100.0000"}, // precision is ignored
+		{"USD", "EUR", "100.0000", "%16s", "USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%17s", " USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%18s", "  USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%19s", "   USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%019s", "USD/EUR 000100.0000"},
+		{"USD", "EUR", "100.0000", "%+19s", "   USD/EUR 100.0000"}, // '+' is ignored
+		{"USD", "EUR", "100.0000", "%-19s", "USD/EUR 100.0000   "},
+		{"USD", "EUR", "100.0000", "%+-021s", "USD/EUR 100.0000     "}, // '+' and '0' are ignored
 		// %v verb
-		{"USD", "EUR", "100.00", "%v", "USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%+v", "USD/EUR 100.0000"},  // '+' is ignored
-		{"USD", "EUR", "100.00", "% v", "USD/EUR 100.0000"},  // ' ' is ignored
-		{"USD", "EUR", "100.00", "%.6v", "USD/EUR 100.0000"}, // precision is ignored
-		{"USD", "EUR", "100.00", "%16v", "USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%17v", " USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%18v", "  USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%19v", "   USD/EUR 100.0000"},
-		{"USD", "EUR", "100.00", "%019v", "USD/EUR 000100.0000"},
-		{"USD", "EUR", "100.00", "%+19v", "   USD/EUR 100.0000"}, // '+' is ignored
-		{"USD", "EUR", "100.00", "%-19v", "USD/EUR 100.0000   "},
-		{"USD", "EUR", "100.00", "%+-021v", "USD/EUR 100.0000     "}, // '+' and '0' are ignored
+		{"USD", "EUR", "100.0000", "%v", "USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%+v", "USD/EUR 100.0000"},  // '+' is ignored
+		{"USD", "EUR", "100.0000", "% v", "USD/EUR 100.0000"},  // ' ' is ignored
+		{"USD", "EUR", "100.0000", "%.6v", "USD/EUR 100.0000"}, // precision is ignored
+		{"USD", "EUR", "100.0000", "%16v", "USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%17v", " USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%18v", "  USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%19v", "   USD/EUR 100.0000"},
+		{"USD", "EUR", "100.0000", "%019v", "USD/EUR 000100.0000"},
+		{"USD", "EUR", "100.0000", "%+19v", "   USD/EUR 100.0000"}, // '+' is ignored
+		{"USD", "EUR", "100.0000", "%-19v", "USD/EUR 100.0000   "},
+		{"USD", "EUR", "100.0000", "%+-021v", "USD/EUR 100.0000     "}, // '+' and '0' are ignored
 		// %f verb
 		{"JPY", "EUR", "0.01", "%f", "0.01"},
 		{"JPY", "EUR", "100.00", "%f", "100.00"},
-		{"OMR", "EUR", "0.01", "%f", "0.01000"},
-		{"OMR", "EUR", "100.00", "%f", "100.00000"},
-		{"USD", "EUR", "0.01", "%f", "0.0100"},
-		{"USD", "EUR", "100.00", "%f", "100.0000"},
-		{"USD", "EUR", "9.996208266660", "%f", "9.9962"},
-		{"USD", "EUR", "0.9996208266660", "%f", "0.9996"},
-		{"USD", "EUR", "0.09996208266660", "%f", "0.1000"},
-		{"USD", "EUR", "0.009996208266660", "%f", "0.0100"},
-		{"USD", "EUR", "100.00", "%+f", "100.0000"},  // '+' is ignored
-		{"USD", "EUR", "100.00", "% f", "100.0000"},  // ' ' is ignored
-		{"USD", "EUR", "100.00", "%.3f", "100.0000"}, // precision cannot be smaller than curr scale
-		{"USD", "EUR", "100.00", "%.4f", "100.0000"},
-		{"USD", "EUR", "100.00", "%.5f", "100.00000"},
-		{"USD", "EUR", "100.00", "%.6f", "100.000000"},
-		{"USD", "EUR", "100.00", "%.7f", "100.0000000"},
-		{"USD", "EUR", "100.00", "%.8f", "100.00000000"},
-		{"USD", "EUR", "100.00", "%9f", " 100.0000"},
-		{"USD", "EUR", "100.00", "%10f", "  100.0000"},
-		{"USD", "EUR", "100.00", "%11f", "   100.0000"},
-		{"USD", "EUR", "100.00", "%12f", "    100.0000"},
-		{"USD", "EUR", "100.00", "%013f", "00000100.0000"},
-		{"USD", "EUR", "100.00", "%+13f", "     100.0000"}, // '+' is ignored
-		{"USD", "EUR", "100.00", "%-13f", "100.0000     "},
+		{"OMR", "EUR", "0.01", "%f", "0.01"},
+		{"OMR", "EUR", "100.00", "%f", "100.00"},
+		{"USD", "EUR", "0.01", "%f", "0.01"},
+		{"USD", "EUR", "100.00", "%f", "100.00"},
+		{"USD", "EUR", "9.996208266660", "%.1f", "10.00"},
+		{"USD", "EUR", "0.9996208266660", "%.1f", "1.00"},
+		{"USD", "EUR", "0.09996208266660", "%.1f", "0.10"},
+		{"USD", "EUR", "0.009996208266660", "%.1f", "0.01"},
+		{"USD", "EUR", "0.0009996208266660", "%.1f", "0.00"},
+		{"USD", "EUR", "9.996208266660", "%.4f", "9.9962"},
+		{"USD", "EUR", "0.9996208266660", "%.4f", "0.9996"},
+		{"USD", "EUR", "0.09996208266660", "%.4f", "0.1000"},
+		{"USD", "EUR", "0.009996208266660", "%.4f", "0.0100"},
+		{"USD", "EUR", "100.0000", "%+f", "100.0000"}, // '+' is ignored
+		{"USD", "EUR", "100.0000", "% f", "100.0000"}, // ' ' is ignored
+		{"USD", "EUR", "100.0000", "%.3f", "100.000"},
+		{"USD", "EUR", "100.0000", "%.4f", "100.0000"},
+		{"USD", "EUR", "100.0000", "%.5f", "100.00000"},
+		{"USD", "EUR", "100.0000", "%.6f", "100.000000"},
+		{"USD", "EUR", "100.0000", "%.7f", "100.0000000"},
+		{"USD", "EUR", "100.0000", "%.8f", "100.00000000"},
+		{"USD", "EUR", "100.0000", "%9f", " 100.0000"},
+		{"USD", "EUR", "100.0000", "%10f", "  100.0000"},
+		{"USD", "EUR", "100.0000", "%11f", "   100.0000"},
+		{"USD", "EUR", "100.0000", "%12f", "    100.0000"},
+		{"USD", "EUR", "100.0000", "%013f", "00000100.0000"},
+		{"USD", "EUR", "100.0000", "%+13f", "     100.0000"}, // '+' is ignored
+		{"USD", "EUR", "100.0000", "%-13f", "100.0000     "},
+		// %b verb
+		{"USD", "EUR", "100.00", "%b", "USD"},
+		{"USD", "EUR", "100.00", "%+b", "USD"}, // '+' is ignored
+		{"USD", "EUR", "100.00", "% b", "USD"}, // ' ' is ignored
+		{"USD", "EUR", "100.00", "%#b", "USD"}, // '#' is ignored
+		{"USD", "EUR", "100.00", "%9b", "      USD"},
+		{"USD", "EUR", "100.00", "%09b", "      USD"}, // '0' is ignored
+		{"USD", "EUR", "100.00", "%#9b", "      USD"}, // '#' is ignored
+		{"USD", "EUR", "100.00", "%-9b", "USD      "},
+		{"USD", "EUR", "100.00", "%-#9b", "USD      "}, // '#' is ignored
 		// %c verb
-		{"USD", "EUR", "100.00", "%c", "USD/EUR"},
-		{"USD", "EUR", "100.00", "%+c", "USD/EUR"}, // '+' is ignored
-		{"USD", "EUR", "100.00", "% c", "USD/EUR"}, // ' ' is ignored
-		{"USD", "EUR", "100.00", "%#c", "USD/EUR"}, // '#' is ignored
-		{"USD", "EUR", "100.00", "%9c", "  USD/EUR"},
-		{"USD", "EUR", "100.00", "%09c", "  USD/EUR"}, // '0' is ignored
-		{"USD", "EUR", "100.00", "%#9c", "  USD/EUR"}, // '#' is ignored
-		{"USD", "EUR", "100.00", "%-9c", "USD/EUR  "},
-		{"USD", "EUR", "100.00", "%-#9c", "USD/EUR  "}, // '#' is ignored
+		{"USD", "EUR", "100.00", "%c", "EUR"},
+		{"USD", "EUR", "100.00", "%+c", "EUR"}, // '+' is ignored
+		{"USD", "EUR", "100.00", "% c", "EUR"}, // ' ' is ignored
+		{"USD", "EUR", "100.00", "%#c", "EUR"}, // '#' is ignored
+		{"USD", "EUR", "100.00", "%9c", "      EUR"},
+		{"USD", "EUR", "100.00", "%09c", "      EUR"}, // '0' is ignored
+		{"USD", "EUR", "100.00", "%#9c", "      EUR"}, // '#' is ignored
+		{"USD", "EUR", "100.00", "%-9c", "EUR      "},
+		{"USD", "EUR", "100.00", "%-#9c", "EUR      "}, // '#' is ignored
 		// wrong verbs
-		{"USD", "EUR", "12.34", "%b", "%!b(money.ExchangeRate=USD/EUR 12.3400)"},
-		{"USD", "EUR", "12.34", "%d", "%!d(money.ExchangeRate=USD/EUR 12.3400)"},
-		{"USD", "EUR", "12.34", "%e", "%!e(money.ExchangeRate=USD/EUR 12.3400)"},
-		{"USD", "EUR", "12.34", "%E", "%!E(money.ExchangeRate=USD/EUR 12.3400)"},
-		{"USD", "EUR", "12.34", "%g", "%!g(money.ExchangeRate=USD/EUR 12.3400)"},
-		{"USD", "EUR", "12.34", "%G", "%!G(money.ExchangeRate=USD/EUR 12.3400)"},
-		{"USD", "EUR", "12.34", "%x", "%!x(money.ExchangeRate=USD/EUR 12.3400)"},
-		{"USD", "EUR", "12.34", "%X", "%!X(money.ExchangeRate=USD/EUR 12.3400)"},
+		{"USD", "EUR", "12.3400", "%d", "%!d(money.ExchangeRate=USD/EUR 12.3400)"},
+		{"USD", "EUR", "12.3400", "%e", "%!e(money.ExchangeRate=USD/EUR 12.3400)"},
+		{"USD", "EUR", "12.3400", "%E", "%!E(money.ExchangeRate=USD/EUR 12.3400)"},
+		{"USD", "EUR", "12.3400", "%g", "%!g(money.ExchangeRate=USD/EUR 12.3400)"},
+		{"USD", "EUR", "12.3400", "%G", "%!G(money.ExchangeRate=USD/EUR 12.3400)"},
+		{"USD", "EUR", "12.3400", "%x", "%!x(money.ExchangeRate=USD/EUR 12.3400)"},
+		{"USD", "EUR", "12.3400", "%X", "%!X(money.ExchangeRate=USD/EUR 12.3400)"},
 	}
 	for _, tt := range tests {
 		r := MustParseExchRate(tt.b, tt.q, tt.r)
@@ -361,4 +559,269 @@ func TestExchangeRate_Format(t *testing.T) {
 			t.Errorf("fmt.Sprintf(%q, %q) = %q, want %q", tt.format, r, got, tt.want)
 		}
 	}
+}
+
+func TestExchangeRate_Ceil(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			b, q, r string
+			scale   int
+			want    string
+		}{
+			{"USD", "EUR", "0.8000", 2, "0.80"},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.b, tt.q, tt.r)
+			got, err := r.Ceil(tt.scale)
+			if err != nil {
+				t.Errorf("%q.Ceil(%v) failed: %v", r, tt.scale, err)
+				continue
+			}
+			want := MustParseExchRate(tt.b, tt.q, tt.want)
+			if got != want {
+				t.Errorf("%q.Ceil(%v) = %q, want %q", r, tt.scale, got, want)
+			}
+		}
+	})
+}
+
+func TestExchangeRate_Floor(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			b, q, r string
+			scale   int
+			want    string
+		}{
+			{"USD", "EUR", "0.8000", 0, "0.80"},
+			{"USD", "EUR", "0.0800", 1, "0.08"},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.b, tt.q, tt.r)
+			got, err := r.Floor(tt.scale)
+			if err != nil {
+				t.Errorf("%q.Floor(%v) failed: %v", r, tt.scale, err)
+				continue
+			}
+			want := MustParseExchRate(tt.b, tt.q, tt.want)
+			if got != want {
+				t.Errorf("%q.Floor(%v) = %q, want %q", r, tt.scale, got, want)
+			}
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		tests := map[string]struct {
+			base, quote, r string
+			scale          int
+		}{
+			"zero rate 1": {"USD", "EUR", "0.0080", 2},
+			"zero rate 2": {"USD", "EUR", "0.0008", 3},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.base, tt.quote, tt.r)
+			_, err := r.Floor(tt.scale)
+			if err == nil {
+				t.Errorf("%q.Floor(%v) did not fail", r, tt.scale)
+			}
+		}
+	})
+}
+
+func TestExchangeRate_Trunc(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			base, quote, r string
+			scale          int
+			want           string
+		}{
+			{"USD", "EUR", "0.8000", 2, "0.80"},
+			{"USD", "EUR", "0.0800", 2, "0.08"},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.base, tt.quote, tt.r)
+			got, err := r.Trunc(tt.scale)
+			if err != nil {
+				t.Errorf("%q.Trunc(%v) failed: %v", r, tt.scale, err)
+				continue
+			}
+			want := MustParseExchRate(tt.base, tt.quote, tt.want)
+			if got != want {
+				t.Errorf("%q.Trunc(%v) = %q, want %q", r, tt.scale, got, want)
+			}
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		tests := map[string]struct {
+			base, quote, r string
+			scale          int
+		}{
+			"zero rate 1": {"USD", "EUR", "0.0080", 2},
+			"zero rate 2": {"USD", "EUR", "0.0008", 3},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.base, tt.quote, tt.r)
+			_, err := r.Trunc(tt.scale)
+			if err == nil {
+				t.Errorf("%q.Trunc(%v) did not fail", r, tt.scale)
+			}
+		}
+	})
+}
+
+func TestExchangeRate_Round(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			base, quote, r string
+			scale          int
+			want           string
+		}{
+			{"USD", "EUR", "0.8000", 2, "0.80"},
+			{"USD", "EUR", "0.0800", 2, "0.08"},
+			{"USD", "EUR", "0.0080", 2, "0.01"},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.base, tt.quote, tt.r)
+			got, err := r.Round(tt.scale)
+			if err != nil {
+				t.Errorf("%q.Round(%v) failed: %v", r, tt.scale, err)
+				continue
+			}
+			want := MustParseExchRate(tt.base, tt.quote, tt.want)
+			if got != want {
+				t.Errorf("%q.Round(%v) = %q, want %q", r, tt.scale, got, want)
+			}
+		}
+	})
+	t.Run("error", func(t *testing.T) {
+		tests := map[string]struct {
+			base, quote, r string
+			scale          int
+		}{
+			"zero rate 1": {"USD", "EUR", "0.0050", 2},
+			"zero rate 2": {"USD", "EUR", "0.0005", 3},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.base, tt.quote, tt.r)
+			_, err := r.Round(tt.scale)
+			if err == nil {
+				t.Errorf("%q.Round(%v) did not fail", r, tt.scale)
+			}
+		}
+	})
+}
+
+func TestExchangeRate_Rescale(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			base, quote, r string
+			scale          int
+			want           string
+		}{
+			// Padding
+			{"EUR", "JPY", "1", 0, "1"},
+			{"EUR", "JPY", "1", 1, "1.0"},
+			{"EUR", "JPY", "1", 2, "1.00"},
+			{"EUR", "JPY", "1", 3, "1.000"},
+			{"EUR", "USD", "1", 0, "1.00"},
+			{"EUR", "USD", "1", 1, "1.00"},
+			{"EUR", "USD", "1", 2, "1.00"},
+			{"EUR", "USD", "1", 3, "1.000"},
+			{"EUR", "OMR", "1", 0, "1.000"},
+			{"EUR", "OMR", "1", 1, "1.000"},
+			{"EUR", "OMR", "1", 2, "1.000"},
+			{"EUR", "OMR", "1", 3, "1.000"},
+			{"EUR", "USD", "1", 17, "1.00000000000000000"},
+			{"EUR", "USD", "1", 18, "1.000000000000000000"},
+			{"EUR", "USD", "1", 17, "1.00000000000000000"},
+			{"EUR", "USD", "1", 18, "1.000000000000000000"},
+
+			// Half-to-even rounding
+			{"EUR", "USD", "0.0051", 2, "0.01"},
+			{"EUR", "USD", "0.0149", 2, "0.01"},
+			{"EUR", "USD", "0.0151", 2, "0.02"},
+			{"EUR", "USD", "0.0150", 2, "0.02"},
+			{"EUR", "USD", "0.0250", 2, "0.02"},
+			{"EUR", "USD", "0.0350", 2, "0.04"},
+			{"EUR", "USD", "3.0448", 2, "3.04"},
+			{"EUR", "USD", "3.0450", 2, "3.04"},
+			{"EUR", "USD", "3.0452", 2, "3.05"},
+			{"EUR", "USD", "3.0956", 2, "3.10"},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.base, tt.quote, tt.r)
+			got, err := r.Rescale(tt.scale)
+			if err != nil {
+				t.Errorf("%q.Rescale(%v) failed: %v", r, tt.scale, err)
+				continue
+			}
+			want := MustParseExchRate(tt.base, tt.quote, tt.want)
+			if got != want {
+				t.Errorf("%q.Rescale(%v) = %q, want %q", r, tt.scale, got, want)
+			}
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		tests := map[string]struct {
+			base, quote, r string
+			scale          int
+		}{
+			"zero rate 1": {"USD", "EUR", "0.0050", 2},
+			"zero rate 2": {"USD", "EUR", "0.0005", 3},
+			"scale 1":     {"USD", "EUR", "0.0005", 20},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.base, tt.quote, tt.r)
+			_, err := r.Rescale(tt.scale)
+			if err == nil {
+				t.Errorf("%q.Rescale(%v) did not fail", r, tt.scale)
+			}
+		}
+	})
+}
+
+func TestExchangeRate_Quantize(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			base, quote, r, q string
+			want              string
+		}{
+			{"EUR", "JPY", "1", "0.01", "1.00"},
+			{"EUR", "JPY", "1", "0.001", "1.000"},
+			{"EUR", "JPY", "1", "0.0001", "1.0000"},
+			{"EUR", "JPY", "1", "0.00001", "1.00000"},
+			{"EUR", "JPY", "1", "0.000001", "1.000000"},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.base, tt.quote, tt.r)
+			q := MustParseExchRate(tt.base, tt.quote, tt.q)
+			got, err := r.Quantize(q)
+			if err != nil {
+				t.Errorf("%q.Quantize(%q) failed: %v", r, q, err)
+				continue
+			}
+			want := MustParseExchRate(tt.base, tt.quote, tt.want)
+			if got != want {
+				t.Errorf("%q.Quantize(%q) = %q, want %q", r, q, got, want)
+			}
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		tests := map[string]struct {
+			base, quote, r, q string
+		}{
+			"zero rate 1": {"USD", "EUR", "0.0050", "0.01"},
+			"zero rate 2": {"USD", "EUR", "0.0005", "0.001"},
+		}
+		for _, tt := range tests {
+			r := MustParseExchRate(tt.base, tt.quote, tt.r)
+			q := MustParseExchRate(tt.base, tt.quote, tt.q)
+			_, err := r.Quantize(q)
+			if err == nil {
+				t.Errorf("%q.Quantize(%q) did not fail", r, q)
+			}
+		}
+	})
 }

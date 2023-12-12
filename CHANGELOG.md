@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.2.0] - 2023-12-12
+
+### Added
+
+- Implemented constructors:
+  - `NewAmountFromInt64`,
+  - `NewAmountFromFloat64`,
+  - `NewAmountFromMinorUnits`,
+  - `NewExchRareFromInt64`,
+  - `NewExchRareFromFloat64`.
+- Implemented methods:
+  - `Amount.Decimal`,
+  - `Amount.MinScale`,
+  - `Amount.CmbAbs`,
+  - `Amount.SubAbs`,
+  - `Amount.Clamp`,
+  - `ExchangeRate.Float64`,
+  - `ExchangeRate.Int64`,
+  - `ExchangeRate.Decimal`,
+  - `ExchangeRate.Ceil`,
+  - `ExchangeRate.Floor`,
+  - `ExchangeRate.Trunc`,
+  - `ExchangeRate.Trim`.
+  - `ExchangeRate.IsPos`,
+  - `ExchangeRate.Sign`,
+- Implemented `NullCurrency` type.
+
+### Changed
+
+- Renamed `NewAmount` contructor to `NewAmountFromDecimal`.
+- Renamed `NewExchRate` constructor to `NewExchRateFromDecimal`.
+- Changed `ExchangeRate.Round`, now it returns an error.
+- Changed `ExchangeRate.Format`, now `%c` returns quore currency, not a currency pair.
+
+### Removed
+
+- Removed methods:
+  - `Amount.Prec`,
+  - `Amount.Coef`,
+  - `ExchangeRate.RoundToCurr`,
+  - `ExchangeRate.Prec`,
+  - `ExchangeRate.SameScaleAsCurr`.
+
 ## [0.1.3] - 2023-08-21
 
 ### Added

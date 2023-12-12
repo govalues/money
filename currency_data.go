@@ -325,7 +325,7 @@ var currLookup = map[string]Currency{
 	"ZWL": ZWL, "zwl": ZWL, "932": ZWL, // Zimbabwe Dollar
 }
 
-var scaleLookup = [...]int{
+var scaleLookup = [...]int8{
 	0, // No Currency
 	2, // Test Currency
 	2, // U.A.E. Dirham

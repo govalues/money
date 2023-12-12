@@ -15,7 +15,7 @@ var currLookup = map[string]Currency {
     {{ end -}}
 }
 
-var scaleLookup = [...]int{
+var scaleLookup = [...]int8{
     {{ range $curr := . -}}
     {{ $curr.Scale }}, // {{ $curr.Name }}
     {{ end -}}
