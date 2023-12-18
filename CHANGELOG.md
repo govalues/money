@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.2] - 2023-12-18
+
+### Changed
+
+- Improved table formatting in documentation.
+
 ## [0.2.1] - 2023-12-18
 
 ### Changed

@@ -107,11 +107,11 @@ Comparison with other popular packages:
 | Numeric Representation          | Floating Point | Fixed Point       | Floating Point  |
 | Precision                       | 19 digits      | 18 digits         | 39 digits       |
 | Default Rounding                | Half to even   | Not supported     | Half up         |
-| Overflow Control                | Yes            | No[^wraparound]   | Yes             |
+| Overflow Control                | Yes            | No[^wrap]         | Yes             |
 | Support for Division            | Yes            | No                | Yes             |
 | Support for Currency Conversion | Yes            | No                | Yes             |
 
-[^wraparound] [rhymond] does not detect overflow and returns an invalid result.
+[^wrap]: [rhymond] does not detect overflow and returns an invalid result.
 For example, 92,233,720,368,547,758.07 + 0.01 results in -92,233,720,368,547,758.08.
 
 ### Benchmarks
@@ -123,21 +123,21 @@ pkg: github.com/govalues/money-tests
 cpu: AMD Ryzen 7 3700C  with Radeon Vega Mobile Gfx 
 ```
 
-| Test Case   | Expression                | govalues | [rhymond] v1.0.10 | [bojanz] v1.2.1 | govalues vs rhymond | govalues vs bojanz |
-| ----------- | ------------------------- | -------: | ----------------: | --------------: | ------------------: | -----------------: |
-| Add         | USD 2.00 + USD 3.00       |   22.95n |           218.30n |         144.10n |            +851.41% |           +528.02% |
-| Mul         | USD 2.00 * 3              |   21.80n |           133.40n |         239.60n |            +511.79% |           +998.83% |
-| QuoFinite   | USD 2.00 / 4              |   80.12n |       n/a[^nodiv] |         468.05n |                 n/a |           +484.19% |
-| QuoInfinite | USD 2.00 / 3              |   602.1n |       n/a[^nodiv] |          512.4n |                 n/a |            -14.91% |
-| Split       | USD 2.00 into 10 parts    |   374.9n |            897.0n |   n/a[^nosplit] |            +139.28% |                n/a |
-| Conv        | USD 2.00 * USD/EUR 0.8000 |   30.88n |      n/a[^noconv] |         348.50n |                 n/a |          +1028.38% |
-| Parse       | USD 1                     |   44.99n |           139.50n |          99.09n |            +210.07% |           +120.26% |
-| Parse       | USD 123.456               |   61.45n |           148.60n |         240.90n |            +141.82% |           +292.03% |
-| Parse       | USD 123456789.1234567890  |   131.2n |            204.4n |          253.0n |             +55.85% |            +92.87% |
-| String      | USD 1                     |   38.48n |           200.70n |          89.92n |            +421.50% |           +133.65% |
-| String      | USD 123.456               |   56.34n |           229.90n |         127.05n |            +308.02% |           +125.49% |
-| String      | USD 123456789.1234567890  |   84.73n |           383.30n |         277.55n |            +352.38% |           +227.57% |
-| Telco       | see [specification]       |   224.2n |   n/a[^nofracmul] |         1944.0n |                 n/a |           +766.89% |
+| Test Case   | Expression               | govalues | [rhymond] v1.0.10 | [bojanz] v1.2.1 | govalues vs rhymond | govalues vs bojanz |
+| ----------- | ------------------------ | -------: | ----------------: | --------------: | ------------------: | -----------------: |
+| Add         | USD 2.00 + USD 3.00      |   22.95n |           218.30n |         144.10n |            +851.41% |           +528.02% |
+| Mul         | USD 2.00 * 3             |   21.80n |           133.40n |         239.60n |            +511.79% |           +998.83% |
+| QuoFinite   | USD 2.00 / 4             |   80.12n |       n/a[^nodiv] |         468.05n |                 n/a |           +484.19% |
+| QuoInfinite | USD 2.00 / 3             |   602.1n |       n/a[^nodiv] |          512.4n |                 n/a |            -14.91% |
+| Split       | USD 2.00 into 10 parts   |   374.9n |            897.0n |   n/a[^nosplit] |            +139.28% |                n/a |
+| Conv        | USD 2.00 * USD/EUR 0.8   |   30.88n |      n/a[^noconv] |         348.50n |                 n/a |          +1028.38% |
+| Parse       | USD 1                    |   44.99n |           139.50n |          99.09n |            +210.07% |           +120.26% |
+| Parse       | USD 123.456              |   61.45n |           148.60n |         240.90n |            +141.82% |           +292.03% |
+| Parse       | USD 123456789.1234567890 |   131.2n |            204.4n |          253.0n |             +55.85% |            +92.87% |
+| String      | USD 1                    |   38.48n |           200.70n |          89.92n |            +421.50% |           +133.65% |
+| String      | USD 123.456              |   56.34n |           229.90n |         127.05n |            +308.02% |           +125.49% |
+| String      | USD 123456789.1234567890 |   84.73n |           383.30n |         277.55n |            +352.38% |           +227.57% |
+| Telco       | see [specification]      |   224.2n |   n/a[^nofracmul] |         1944.0n |                 n/a |           +766.89% |
 
 [^nodiv]: [rhymond] does not support division.
 
