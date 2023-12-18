@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1] - 2023-12-18
+
+### Changed
+
+- Improved examples and documentation.
+- Improved test coverage.
+
 ## [0.2.0] - 2023-12-12
 
 ### Added
@@ -25,6 +32,8 @@
   - `ExchangeRate.Trim`.
   - `ExchangeRate.IsPos`,
   - `ExchangeRate.Sign`,
+  - `ExchangeRate.MinScale`,
+  - `ExchangeRate.Quantize`,
 - Implemented `NullCurrency` type.
 
 ### Changed

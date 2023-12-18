@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
 
 	"github.com/govalues/decimal"
 )
@@ -321,7 +320,7 @@ func (a Amount) Neg() Amount {
 
 // CopySign returns an amount with the same sign as amount b.
 // The currency of amount b is ignored.
-// CopySign treates zero as positive.
+// CopySign treates 0 as positive.
 // See also method [Amount.Sign].
 func (a Amount) CopySign(b Amount) Amount {
 	d, e := a.Decimal(), b.Decimal()
@@ -502,7 +501,7 @@ func (a Amount) mul(e decimal.Decimal) (Amount, error) {
 // See also methods [Amount.QuoRem], [Amount.Rat], and [Amount.Split].
 //
 // Quo returns an error if:
-//   - the divisor is zero;
+//   - the divisor is 0;
 //   - the integer part of the result has more than ([decimal.MaxPrec] - [Currency.Scale]) digits.
 //     For example, when currency is US Dollars, Quo will return an error if the integer
 //     part of the result has more than 17 digits (19 - 2 = 17).
@@ -529,7 +528,7 @@ func (a Amount) quo(e decimal.Decimal) (Amount, error) {
 // See also methods [Amount.Quo], [Amount.Rat], and [Amount.Split].
 //
 // QuoRem returns an error if:
-//   - the divisor is zero;
+//   - the divisor is 0;
 //   - the integer part of the result has more than [decimal.MaxPrec] digits.
 func (a Amount) QuoRem(e decimal.Decimal) (q, r Amount, err error) {
 	q, r, err = a.quoRem(e)
@@ -567,7 +566,7 @@ func (a Amount) quoRem(e decimal.Decimal) (q, r Amount, err error) {
 // See also methods [Amount.Quo], [Amount.QuoRem], and [Amount.Split].
 //
 // Rat returns an error if:
-//   - the divisor is zero;
+//   - the divisor is 0;
 //   - the integer part of the result has more than [decimal.MaxPrec] digits.
 func (a Amount) Rat(b Amount) (decimal.Decimal, error) {
 	d, e := a.Decimal(), b.Decimal()
@@ -849,11 +848,52 @@ func (a Amount) SameScaleAsCurr() bool {
 // [fmt.Stringer]: https://pkg.go.dev/fmt#Stringer
 // [Decimal.String]: https://pkg.go.dev/github.com/govalues/decimal#Decimal.String
 func (a Amount) String() string {
-	var b strings.Builder
-	b.WriteString(a.Curr().String())
-	b.WriteByte(' ')
-	b.WriteString(a.Decimal().String())
-	return b.String()
+	var buf [32]byte
+	pos := len(buf) - 1
+	coef := a.Decimal().Coef()
+	scale := a.Decimal().Scale()
+
+	// Coefficient
+	for {
+		buf[pos] = byte(coef%10) + '0'
+		pos--
+		coef /= 10
+		if scale > 0 {
+			scale--
+			// Decimal point
+			if scale == 0 {
+				buf[pos] = '.'
+				pos--
+				// Leading 0
+				if coef == 0 {
+					buf[pos] = '0'
+					pos--
+				}
+			}
+		}
+		if coef == 0 && scale == 0 {
+			break
+		}
+	}
+
+	// Sign
+	if a.Decimal().IsNeg() {
+		buf[pos] = '-'
+		pos--
+	}
+
+	// Delimiter
+	buf[pos] = ' '
+	pos--
+
+	// Currency
+	curr := a.Curr().Code()
+	for i := len(curr) - 1; i >= 0; i-- {
+		buf[pos] = curr[i]
+		pos--
+	}
+
+	return string(buf[pos+1:])
 }
 
 // Cmp compares amounts and returns:
