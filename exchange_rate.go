@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
 
 	"github.com/govalues/decimal"
 )
@@ -16,7 +15,7 @@ import (
 type ExchangeRate struct {
 	base  Currency        // currency being exchanged
 	quote Currency        // currency being obtained in exchange for the base currency
-	value decimal.Decimal // how many units of quote currency are needed to exchange for one unit of the base currency
+	value decimal.Decimal // how many units of the quote currency are needed to exchange for 1 unit of the base currency
 }
 
 // newExchRateUnsafe creates a new rate without checking the sign and the scale.
@@ -28,13 +27,13 @@ func newExchRateUnsafe(b, q Currency, d decimal.Decimal) ExchangeRate {
 // newExchRateSafe creates a new rate and checks the sign and the scale.
 func newExchRateSafe(b, q Currency, d decimal.Decimal) (ExchangeRate, error) {
 	if d.IsZero() {
-		return ExchangeRate{}, fmt.Errorf("exchange rate must not be 0")
+		return ExchangeRate{}, fmt.Errorf("exchange rate cannot be 0")
 	}
 	if d.IsNeg() {
 		return ExchangeRate{}, fmt.Errorf("exchange rate must be positive")
 	}
 	if b == q && !d.IsOne() {
-		return ExchangeRate{}, fmt.Errorf("exchange rate must be equal to 1")
+		return ExchangeRate{}, fmt.Errorf("exchange rate between identical currencies must be equal to 1")
 	}
 	if d.Scale() < q.Scale() {
 		var err error
@@ -52,7 +51,7 @@ func newExchRateSafe(b, q Currency, d decimal.Decimal) (ExchangeRate, error) {
 //
 // NewExchRate returns an error if:
 //   - the currency codes are not valid;
-//   - the coefficient is zero or negative
+//   - the coefficient is 0 or negative
 //   - the scale is negative or greater than [decimal.MaxScale];
 //   - the integer part of the result has more than
 //     ([decimal.MaxPrec] - [Currency.Scale]) digits.
@@ -163,7 +162,7 @@ func NewExchRateFromInt64(base, quote string, whole, frac int64, scale int) (Exc
 //
 // NewExchRateFromFloat64 returns an error if:
 //   - the currency codes are not valid;
-//   - the float is a zero or negative;
+//   - the float is a 0 or negative;
 //   - the float is a special value (NaN or Inf);
 //   - the integer part of the result has more than
 //     ([decimal.MaxPrec] - [Currency.Scale]) digits.
@@ -232,6 +231,8 @@ func (r ExchangeRate) Quote() Currency {
 }
 
 // Decimal returns the decimal representation of the rate.
+// It is equal to the number of units of the quote currency needed
+// to exchange for 1 unit of the base currency.
 func (r ExchangeRate) Decimal() decimal.Decimal {
 	return r.value
 }
@@ -314,7 +315,7 @@ func (r ExchangeRate) conv(b Amount) (Amount, error) {
 // but with the rate multiplied by a factor.
 //
 // Mul returns an error if:
-//   - the result is zero or negative;
+//   - the result is 0 or negative;
 //   - the integer part of the result has more than
 //     ([decimal.MaxPrec] - [Currency.Scale]) digits.
 //     For example, when the quote currency is US Dollars, Mul will return an error
@@ -339,8 +340,8 @@ func (r ExchangeRate) mul(e decimal.Decimal) (ExchangeRate, error) {
 // Inv returns the inverse of the exchange rate.
 //
 // Inv returns an error if:
-//   - the rate is zero;
-//   - the inverse of the rate is zero;
+//   - the rate is 0;
+//   - the inverse of the rate is 0;
 //   - the integer part of the result has more than
 //     ([decimal.MaxPrec] - [Currency.Scale]) digits.
 //     For example, when the base currency is US Dollars, Inv will return an error
@@ -455,7 +456,7 @@ func (r ExchangeRate) Ceil(scale int) (ExchangeRate, error) {
 // the rate will be rounded down to the scale of the quote currency instead.
 // See also method [ExchangeRate.Ceil].
 //
-// Floor returns an error if the result is zero.
+// Floor returns an error if the result is 0.
 //
 // [rounding toward negative infinity]: https://en.wikipedia.org/wiki/Rounding#Rounding_down
 func (r ExchangeRate) Floor(scale int) (ExchangeRate, error) {
@@ -476,7 +477,7 @@ func (r ExchangeRate) Floor(scale int) (ExchangeRate, error) {
 // If the given scale is less than the scale of the quote currency,
 // the rate will be truncated to the scale of the quote currency instead.
 //
-// Trunc returns an error if the result is zero.
+// Trunc returns an error if the result is 0.
 //
 // [rounding toward zero]: https://en.wikipedia.org/wiki/Rounding#Rounding_toward_zero
 func (r ExchangeRate) Trunc(scale int) (ExchangeRate, error) {
@@ -510,7 +511,7 @@ func (r ExchangeRate) Trim(scale int) ExchangeRate {
 // the rate will be rounded to the scale of the quote currency instead.
 // See also method [ExchangeRate.Rescale].
 //
-// Round returns an error if the result is zero.
+// Round returns an error if the result is 0.
 //
 // [rounding half to even]: https://en.wikipedia.org/wiki/Rounding#Rounding_half_to_even
 func (r ExchangeRate) Round(scale int) (ExchangeRate, error) {
@@ -531,7 +532,7 @@ func (r ExchangeRate) Round(scale int) (ExchangeRate, error) {
 // See also methods [ExchangeRate.Scale], [ExchangeRate.SameScale], [ExchangeRate.Rescale].
 //
 // Quantize returns an error if:
-//   - the result is zero;
+//   - the result is 0;
 //   - the integer part of the result has more than
 //     ([decimal.MaxPrec] - [Currency.Scale]) digits.
 func (r ExchangeRate) Quantize(q ExchangeRate) (ExchangeRate, error) {
@@ -549,7 +550,7 @@ func (r ExchangeRate) Quantize(q ExchangeRate) (ExchangeRate, error) {
 // See also method [ExchangeRate.Round].
 //
 // Rescale returns an error if:
-//   - the result is zero;
+//   - the result is 0;
 //   - the integer part of the result has more than
 //     ([decimal.MaxPrec] - scale) digits.
 func (r ExchangeRate) Rescale(scale int) (ExchangeRate, error) {
@@ -579,13 +580,57 @@ func (r ExchangeRate) rescale(scale int) (ExchangeRate, error) {
 // [fmt.Stringer]: https://pkg.go.dev/fmt#Stringer
 // [Decimal.String]: https://pkg.go.dev/github.com/govalues/decimal#Decimal.String
 func (r ExchangeRate) String() string {
-	var b strings.Builder
-	b.WriteString(r.Base().String())
-	b.WriteByte('/')
-	b.WriteString(r.Quote().String())
-	b.WriteByte(' ')
-	b.WriteString(r.Decimal().String())
-	return b.String()
+	var buf [32]byte
+	pos := len(buf) - 1
+	coef := r.Decimal().Coef()
+	scale := r.Decimal().Scale()
+
+	// Coefficient
+	for {
+		buf[pos] = byte(coef%10) + '0'
+		pos--
+		coef /= 10
+		if scale > 0 {
+			scale--
+			// Decimal point
+			if scale == 0 {
+				buf[pos] = '.'
+				pos--
+				// Leading 0
+				if coef == 0 {
+					buf[pos] = '0'
+					pos--
+				}
+			}
+		}
+		if coef == 0 && scale == 0 {
+			break
+		}
+	}
+
+	// Delimiter
+	buf[pos] = ' '
+	pos--
+
+	// Quote Currency
+	curr := r.Quote().Code()
+	for i := len(curr) - 1; i >= 0; i-- {
+		buf[pos] = curr[i]
+		pos--
+	}
+
+	// Deilimiter
+	buf[pos] = '/'
+	pos--
+
+	// Base Currency
+	curr = r.Base().Code()
+	for i := len(curr) - 1; i >= 0; i-- {
+		buf[pos] = curr[i]
+		pos--
+	}
+
+	return string(buf[pos+1:])
 }
 
 // Format implements the [fmt.Formatter] interface.

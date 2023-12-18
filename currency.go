@@ -50,12 +50,18 @@ func MustParseCurr(curr string) Currency {
 }
 
 // Scale returns the number of digits after the decimal point required for
-// the minor unit of the currency.
-// This represents the [ratio] of the minor unit to the major unit.
-// A scale of 0 means that there is no minor unit for the currency, whereas
-// scales of 1, 2, and 3 signify ratios of 10:1, 100:1, and 1000:1, respectively.
+// representing the minor unit of a currency.
+// The currently supported currencies use scales of 0, 2, or 3:
+//   - A scale of 0 indicates currencies without minor units.
+//     For example, the [Japanese Yen] does not have minor units.
+//   - A scale of 2 indicates currencies that use 2 digits to represent their minor units.
+//     For example, the [US Dollar] represents its minor unit, 1 cent, as 0.01 dollars.
+//   - A scale of 3 indicates currencies with 3 digits in their minor units.
+//     For instance, the minor unit of the [Omani Rial], 1 baisa, is represented as 0.001 rials.
 //
-// [ratio]: https://en.wikipedia.org/wiki/ISO_4217#Minor_unit_fractions
+// [Japanese Yen]: https://en.wikipedia.org/wiki/Japanese_yen
+// [US Dollar]: https://en.wikipedia.org/wiki/United_States_dollar
+// [Omani Rial]: https://en.wikipedia.org/wiki/Omani_rial
 func (c Currency) Scale() int {
 	return int(scaleLookup[c])
 }
@@ -81,6 +87,7 @@ func (c Currency) Code() string {
 
 // String method implements the [fmt.Stringer] interface and returns
 // a string representation of the Currency value.
+// See also method [Currency.Format].
 func (c Currency) String() string {
 	return c.Code()
 }

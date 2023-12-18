@@ -17,18 +17,18 @@ var currLookup = map[string]Currency {
 
 var scaleLookup = [...]int8{
     {{ range $curr := . -}}
-    {{ $curr.Scale }}, // {{ $curr.Name }}
+    {{ $curr.Code }}: {{ $curr.Scale }}, // {{ $curr.Name }}
     {{ end -}}
 }
 
 var numLookup = [...]string{
     {{ range $curr := . -}}
-    "{{ $curr.Num }}", // {{ $curr.Name }}
+    {{ $curr.Code }}: "{{ $curr.Num }}", // {{ $curr.Name }}
     {{ end -}}
 }
 
 var codeLookup = [...]string{
     {{ range $curr := . -}}
-    "{{ $curr.Code }}", // {{ $curr.Name }}
+    {{ $curr.Code }}: "{{ $curr.Code }}", // {{ $curr.Name }}
     {{ end -}}
 }

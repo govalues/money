@@ -49,6 +49,17 @@ func TestCurrency_Parse(t *testing.T) {
 	})
 }
 
+func TestMustParseCurr(t *testing.T) {
+	t.Run("error", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("MustParseCurr(\"UUU\") did not panic")
+			}
+		}()
+		MustParseCurr("UUU")
+	})
+}
+
 func TestCurrency_Scale(t *testing.T) {
 	tests := []struct {
 		curr Currency
@@ -164,6 +175,19 @@ func TestCurrency_Scan(t *testing.T) {
 		err := c.Scan([]byte("USD"))
 		if err == nil {
 			t.Errorf("c.Scan([]byte(\"USD\")) did not fail")
+		}
+	})
+}
+
+func TestNullCurrency_Scan(t *testing.T) {
+	t.Run("[]byte", func(t *testing.T) {
+		tests := []string{"UUU"}
+		for _, tt := range tests {
+			got := NullCurrency{}
+			err := got.Scan([]byte(tt))
+			if err == nil {
+				t.Errorf("Scan(%q) did not fail", tt)
+			}
 		}
 	})
 }

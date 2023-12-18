@@ -1360,8 +1360,12 @@ func ExampleAmount_Format_currencies() {
 
 func ExampleAmount_String() {
 	a := money.MustParseAmount("USD", "5.67")
+	b := money.MustParseAmount("EUR", "-0.010000")
 	fmt.Println(a.String())
-	// Output: USD 5.67
+	fmt.Println(b.String())
+	// Output:
+	// USD 5.67
+	// EUR -0.010000
 }
 
 func ExampleAmount_Abs() {
@@ -1992,8 +1996,12 @@ func ExampleExchangeRate_WithinOne() {
 
 func ExampleExchangeRate_String() {
 	r := money.MustParseExchRate("EUR", "USD", "1.2500")
+	q := money.MustParseExchRate("OMR", "USD", "0.0100")
 	fmt.Println(r.String())
-	// Output: EUR/USD 1.2500
+	fmt.Println(q.String())
+	// Output:
+	// EUR/USD 1.2500
+	// OMR/USD 0.0100
 }
 
 func ExampleExchangeRate_Floor_currencies() {
