@@ -111,7 +111,7 @@ Comparison with other popular packages:
 | Support for Division            | Yes            | No                | Yes             |
 | Support for Currency Conversion | Yes            | No                | Yes             |
 
-[^wrap] [rhymond] does not detect overflow and returns an invalid result.
+[^wrap]: [rhymond] does not detect overflow and returns an invalid result.
 For example, 92,233,720,368,547,758.07 + 0.01 results in -92,233,720,368,547,758.08.
 
 ### Benchmarks
