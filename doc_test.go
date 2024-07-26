@@ -2,6 +2,7 @@ package money_test
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"strconv"
 	"strings"
@@ -593,24 +594,44 @@ func ExampleCurrency_Scale() {
 	// 3
 }
 
-type Value struct {
+type Object struct {
 	Currency money.Currency `json:"currency"`
 }
 
-func ExampleCurrency_UnmarshalText() {
-	var v Value
+func ExampleCurrency_UnmarshalText_json() {
+	var v Object
 	_ = json.Unmarshal([]byte(`{"currency":"USD"}`), &v)
 	fmt.Println(v)
 	// Output: {USD}
 }
 
-func ExampleCurrency_MarshalText() {
-	v := Value{
+func ExampleCurrency_MarshalText_json() {
+	v := Object{
 		Currency: money.USD,
 	}
 	b, _ := json.Marshal(v)
 	fmt.Println(string(b))
 	// Output: {"currency":"USD"}
+}
+
+type Entity struct {
+	Currency money.Currency `xml:"Currency"`
+}
+
+func ExampleCurrency_UnmarshalText_xml() {
+	var v Entity
+	_ = xml.Unmarshal([]byte(`<Entity><Currency>USD</Currency></Entity>`), &v)
+	fmt.Println(v)
+	// Output: {USD}
+}
+
+func ExampleCurrency_MarshalText_xml() {
+	v := Entity{
+		Currency: money.USD,
+	}
+	b, _ := xml.Marshal(v)
+	fmt.Println(string(b))
+	// Output: <Entity><Currency>USD</Currency></Entity>
 }
 
 func ExampleCurrency_Scan() {
@@ -891,8 +912,8 @@ func ExampleAmount_Int64() {
 	fmt.Println(a.Int64(3))
 	fmt.Println(a.Int64(4))
 	// Output:
-	// 0 0 false
-	// 0 0 false
+	// 6 0 true
+	// 5 7 true
 	// 5 68 true
 	// 5 678 true
 	// 5 6780 true
@@ -1016,9 +1037,9 @@ func ExampleAmount_Rescale_currencies() {
 	fmt.Println(b.Rescale(0))
 	fmt.Println(c.Rescale(0))
 	// Output:
-	// JPY 6 <nil>
-	// USD 5.68 <nil>
-	// OMR 5.678 <nil>
+	// JPY 6
+	// USD 6.00
+	// OMR 6.000
 }
 
 func ExampleAmount_Rescale_scales() {
@@ -1029,11 +1050,11 @@ func ExampleAmount_Rescale_scales() {
 	fmt.Println(a.Rescale(3))
 	fmt.Println(a.Rescale(4))
 	// Output:
-	// USD 5.68 <nil>
-	// USD 5.68 <nil>
-	// USD 5.68 <nil>
-	// USD 5.679 <nil>
-	// USD 5.6789 <nil>
+	// USD 6.00
+	// USD 5.70
+	// USD 5.68
+	// USD 5.679
+	// USD 5.6789
 }
 
 func ExampleAmount_Round_currencies() {
@@ -1045,8 +1066,8 @@ func ExampleAmount_Round_currencies() {
 	fmt.Println(c.Round(0))
 	// Output:
 	// JPY 6
-	// USD 5.68
-	// OMR 5.678
+	// USD 6.00
+	// OMR 6.000
 }
 
 func ExampleAmount_Round_scales() {
@@ -1057,8 +1078,8 @@ func ExampleAmount_Round_scales() {
 	fmt.Println(a.Round(3))
 	fmt.Println(a.Round(4))
 	// Output:
-	// USD 5.68
-	// USD 5.68
+	// USD 6.00
+	// USD 5.70
 	// USD 5.68
 	// USD 5.679
 	// USD 5.6789
@@ -1086,9 +1107,9 @@ func ExampleAmount_Quantize() {
 	fmt.Println(a.Quantize(y))
 	fmt.Println(a.Quantize(z))
 	// Output:
-	// JPY 6 <nil>
-	// JPY 5.7 <nil>
-	// JPY 5.68 <nil>
+	// JPY 6
+	// JPY 5.7
+	// JPY 5.68
 }
 
 func ExampleAmount_Ceil_currencies() {
@@ -1100,8 +1121,8 @@ func ExampleAmount_Ceil_currencies() {
 	fmt.Println(c.Ceil(0))
 	// Output:
 	// JPY 6
-	// USD 5.68
-	// OMR 5.678
+	// USD 6.00
+	// OMR 6.000
 }
 
 func ExampleAmount_Ceil_scales() {
@@ -1112,8 +1133,8 @@ func ExampleAmount_Ceil_scales() {
 	fmt.Println(a.Ceil(3))
 	fmt.Println(a.Ceil(4))
 	// Output:
-	// USD 5.68
-	// USD 5.68
+	// USD 6.00
+	// USD 5.70
 	// USD 5.68
 	// USD 5.679
 	// USD 5.6789
@@ -1141,8 +1162,8 @@ func ExampleAmount_Floor_currencies() {
 	fmt.Println(c.Floor(0))
 	// Output:
 	// JPY 5
-	// USD 5.67
-	// OMR 5.678
+	// USD 5.00
+	// OMR 5.000
 }
 
 func ExampleAmount_Floor_scales() {
@@ -1153,8 +1174,8 @@ func ExampleAmount_Floor_scales() {
 	fmt.Println(a.Floor(3))
 	fmt.Println(a.Floor(4))
 	// Output:
-	// USD 5.67
-	// USD 5.67
+	// USD 5.00
+	// USD 5.60
 	// USD 5.67
 	// USD 5.678
 	// USD 5.6789
@@ -1182,8 +1203,8 @@ func ExampleAmount_Trunc_currencies() {
 	fmt.Println(c.Trunc(0))
 	// Output:
 	// JPY 5
-	// USD 5.67
-	// OMR 5.678
+	// USD 5.00
+	// OMR 5.000
 }
 
 func ExampleAmount_Trunc_scales() {
@@ -1194,8 +1215,8 @@ func ExampleAmount_Trunc_scales() {
 	fmt.Println(a.Trunc(3))
 	fmt.Println(a.Trunc(4))
 	// Output:
-	// USD 5.67
-	// USD 5.67
+	// USD 5.00
+	// USD 5.60
 	// USD 5.67
 	// USD 5.678
 	// USD 5.6789
@@ -1300,20 +1321,7 @@ func ExampleAmount_Scale() {
 	// 2
 }
 
-func ExampleAmount_MinScale_currencies() {
-	a := money.MustParseAmount("JPY", "5.0000")
-	b := money.MustParseAmount("USD", "5.0000")
-	c := money.MustParseAmount("OMR", "5.0000")
-	fmt.Println(a.MinScale())
-	fmt.Println(b.MinScale())
-	fmt.Println(c.MinScale())
-	// Output:
-	// 0
-	// 2
-	// 3
-}
-
-func ExampleAmount_MinScale_scales() {
+func ExampleAmount_MinScale() {
 	a := money.MustParseAmount("USD", "5.6000")
 	b := money.MustParseAmount("USD", "5.6700")
 	c := money.MustParseAmount("USD", "5.6780")
@@ -1321,7 +1329,7 @@ func ExampleAmount_MinScale_scales() {
 	fmt.Println(b.MinScale())
 	fmt.Println(c.MinScale())
 	// Output:
-	// 2
+	// 1
 	// 2
 	// 3
 }
@@ -1758,20 +1766,7 @@ func ExampleExchangeRate_Scale() {
 	// 5
 }
 
-func ExampleExchangeRate_MinScale_currencies() {
-	r := money.MustParseExchRate("EUR", "JPY", "5.0000")
-	q := money.MustParseExchRate("EUR", "USD", "5.0000")
-	p := money.MustParseExchRate("EUR", "OMR", "5.0000")
-	fmt.Println(r.MinScale())
-	fmt.Println(q.MinScale())
-	fmt.Println(p.MinScale())
-	// Output:
-	// 0
-	// 2
-	// 3
-}
-
-func ExampleExchangeRate_MinScale_scales() {
+func ExampleExchangeRate_MinScale() {
 	r := money.MustParseExchRate("EUR", "USD", "5.6000")
 	q := money.MustParseExchRate("EUR", "USD", "5.6700")
 	p := money.MustParseExchRate("EUR", "USD", "5.6780")
@@ -1779,7 +1774,7 @@ func ExampleExchangeRate_MinScale_scales() {
 	fmt.Println(q.MinScale())
 	fmt.Println(p.MinScale())
 	// Output:
-	// 2
+	// 1
 	// 2
 	// 3
 }
@@ -1862,15 +1857,15 @@ func ExampleExchangeRate_Float64() {
 }
 
 func ExampleExchangeRate_Int64() {
-	a := money.MustParseExchRate("EUR", "USD", "5.678")
-	fmt.Println(a.Int64(0))
-	fmt.Println(a.Int64(1))
-	fmt.Println(a.Int64(2))
-	fmt.Println(a.Int64(3))
-	fmt.Println(a.Int64(4))
+	r := money.MustParseExchRate("EUR", "USD", "5.678")
+	fmt.Println(r.Int64(0))
+	fmt.Println(r.Int64(1))
+	fmt.Println(r.Int64(2))
+	fmt.Println(r.Int64(3))
+	fmt.Println(r.Int64(4))
 	// Output:
-	// 0 0 false
-	// 0 0 false
+	// 6 0 true
+	// 5 7 true
 	// 5 68 true
 	// 5 678 true
 	// 5 6780 true
@@ -1913,14 +1908,14 @@ func ExampleExchangeRate_CanConv() {
 }
 
 func ExampleExchangeRate_Format_currencies() {
-	a := money.MustParseExchRate("EUR", "JPY", "5")
-	b := money.MustParseExchRate("EUR", "USD", "5")
-	c := money.MustParseExchRate("EUR", "OMR", "5")
+	r := money.MustParseExchRate("EUR", "JPY", "5")
+	q := money.MustParseExchRate("EUR", "USD", "5")
+	p := money.MustParseExchRate("EUR", "OMR", "5")
 	fmt.Println("| v             | f     | b   | c   |")
 	fmt.Println("| ------------- | ----- | --- | --- |")
-	fmt.Printf("| %-13[1]v | %5[1]f | %[1]b | %[1]c |\n", a)
-	fmt.Printf("| %-13[1]v | %5[1]f | %[1]b | %[1]c |\n", b)
-	fmt.Printf("| %-13[1]v | %5[1]f | %[1]b | %[1]c |\n", c)
+	fmt.Printf("| %-13[1]v | %5[1]f | %[1]b | %[1]c |\n", r)
+	fmt.Printf("| %-13[1]v | %5[1]f | %[1]b | %[1]c |\n", q)
+	fmt.Printf("| %-13[1]v | %5[1]f | %[1]b | %[1]c |\n", p)
 	// Output:
 	// | v             | f     | b   | c   |
 	// | ------------- | ----- | --- | --- |
@@ -2005,28 +2000,28 @@ func ExampleExchangeRate_String() {
 }
 
 func ExampleExchangeRate_Floor_currencies() {
-	a := money.MustParseExchRate("EUR", "JPY", "5.678")
-	b := money.MustParseExchRate("EUR", "USD", "5.678")
-	c := money.MustParseExchRate("EUR", "OMR", "5.678")
-	fmt.Println(a.Floor(0))
-	fmt.Println(b.Floor(0))
-	fmt.Println(c.Floor(0))
+	r := money.MustParseExchRate("EUR", "JPY", "5.678")
+	q := money.MustParseExchRate("EUR", "USD", "5.678")
+	p := money.MustParseExchRate("EUR", "OMR", "5.678")
+	fmt.Println(r.Floor(0))
+	fmt.Println(q.Floor(0))
+	fmt.Println(p.Floor(0))
 	// Output:
 	// EUR/JPY 5 <nil>
-	// EUR/USD 5.67 <nil>
-	// EUR/OMR 5.678 <nil>
+	// EUR/USD 5.00 <nil>
+	// EUR/OMR 5.000 <nil>
 }
 
 func ExampleExchangeRate_Floor_scales() {
-	a := money.MustParseExchRate("EUR", "USD", "5.6789")
-	fmt.Println(a.Floor(0))
-	fmt.Println(a.Floor(1))
-	fmt.Println(a.Floor(2))
-	fmt.Println(a.Floor(3))
-	fmt.Println(a.Floor(4))
+	r := money.MustParseExchRate("EUR", "USD", "5.6789")
+	fmt.Println(r.Floor(0))
+	fmt.Println(r.Floor(1))
+	fmt.Println(r.Floor(2))
+	fmt.Println(r.Floor(3))
+	fmt.Println(r.Floor(4))
 	// Output:
-	// EUR/USD 5.67 <nil>
-	// EUR/USD 5.67 <nil>
+	// EUR/USD 5.00 <nil>
+	// EUR/USD 5.60 <nil>
 	// EUR/USD 5.67 <nil>
 	// EUR/USD 5.678 <nil>
 	// EUR/USD 5.6789 <nil>
@@ -2041,8 +2036,8 @@ func ExampleExchangeRate_Rescale_currencies() {
 	fmt.Println(p.Rescale(0))
 	// Output:
 	// EUR/JPY 6 <nil>
-	// EUR/USD 5.68 <nil>
-	// EUR/OMR 5.678 <nil>
+	// EUR/USD 6.00 <nil>
+	// EUR/OMR 6.000 <nil>
 }
 
 func ExampleExchangeRate_Rescale_scales() {
@@ -2053,8 +2048,8 @@ func ExampleExchangeRate_Rescale_scales() {
 	fmt.Println(r.Rescale(3))
 	fmt.Println(r.Rescale(4))
 	// Output:
-	// EUR/USD 5.68 <nil>
-	// EUR/USD 5.68 <nil>
+	// EUR/USD 6.00 <nil>
+	// EUR/USD 5.70 <nil>
 	// EUR/USD 5.68 <nil>
 	// EUR/USD 5.679 <nil>
 	// EUR/USD 5.6789 <nil>
@@ -2083,8 +2078,8 @@ func ExampleExchangeRate_Round_currencies() {
 	fmt.Println(p.Round(0))
 	// Output:
 	// EUR/JPY 6 <nil>
-	// EUR/USD 5.68 <nil>
-	// EUR/OMR 5.678 <nil>
+	// EUR/USD 6.00 <nil>
+	// EUR/OMR 6.000 <nil>
 }
 
 func ExampleExchangeRate_Round_scales() {
@@ -2095,8 +2090,8 @@ func ExampleExchangeRate_Round_scales() {
 	fmt.Println(r.Round(3))
 	fmt.Println(r.Round(4))
 	// Output:
-	// EUR/USD 5.68 <nil>
-	// EUR/USD 5.68 <nil>
+	// EUR/USD 6.00 <nil>
+	// EUR/USD 5.70 <nil>
 	// EUR/USD 5.68 <nil>
 	// EUR/USD 5.679 <nil>
 	// EUR/USD 5.6789 <nil>
@@ -2116,12 +2111,12 @@ func ExampleExchangeRate_Trim_currencies() {
 }
 
 func ExampleExchangeRate_Trim_scales() {
-	a := money.MustParseExchRate("EUR", "USD", "5.0000")
-	fmt.Println(a.Trim(0))
-	fmt.Println(a.Trim(1))
-	fmt.Println(a.Trim(2))
-	fmt.Println(a.Trim(3))
-	fmt.Println(a.Trim(4))
+	r := money.MustParseExchRate("EUR", "USD", "5.0000")
+	fmt.Println(r.Trim(0))
+	fmt.Println(r.Trim(1))
+	fmt.Println(r.Trim(2))
+	fmt.Println(r.Trim(3))
+	fmt.Println(r.Trim(4))
 	// Output:
 	// EUR/USD 5.00
 	// EUR/USD 5.00
@@ -2131,28 +2126,28 @@ func ExampleExchangeRate_Trim_scales() {
 }
 
 func ExampleExchangeRate_Trunc_currencies() {
-	a := money.MustParseExchRate("EUR", "JPY", "5.678")
-	b := money.MustParseExchRate("EUR", "USD", "5.678")
-	c := money.MustParseExchRate("EUR", "OMR", "5.678")
-	fmt.Println(a.Trunc(0))
-	fmt.Println(b.Trunc(0))
-	fmt.Println(c.Trunc(0))
+	r := money.MustParseExchRate("EUR", "JPY", "5.678")
+	q := money.MustParseExchRate("EUR", "USD", "5.678")
+	p := money.MustParseExchRate("EUR", "OMR", "5.678")
+	fmt.Println(r.Trunc(0))
+	fmt.Println(q.Trunc(0))
+	fmt.Println(p.Trunc(0))
 	// Output:
 	// EUR/JPY 5 <nil>
-	// EUR/USD 5.67 <nil>
-	// EUR/OMR 5.678 <nil>
+	// EUR/USD 5.00 <nil>
+	// EUR/OMR 5.000 <nil>
 }
 
 func ExampleExchangeRate_Trunc_scales() {
-	a := money.MustParseExchRate("EUR", "USD", "5.6789")
-	fmt.Println(a.Trunc(0))
-	fmt.Println(a.Trunc(1))
-	fmt.Println(a.Trunc(2))
-	fmt.Println(a.Trunc(3))
-	fmt.Println(a.Trunc(4))
+	r := money.MustParseExchRate("EUR", "USD", "5.6789")
+	fmt.Println(r.Trunc(0))
+	fmt.Println(r.Trunc(1))
+	fmt.Println(r.Trunc(2))
+	fmt.Println(r.Trunc(3))
+	fmt.Println(r.Trunc(4))
 	// Output:
-	// EUR/USD 5.67 <nil>
-	// EUR/USD 5.67 <nil>
+	// EUR/USD 5.00 <nil>
+	// EUR/USD 5.60 <nil>
 	// EUR/USD 5.67 <nil>
 	// EUR/USD 5.678 <nil>
 	// EUR/USD 5.6789 <nil>
@@ -2167,8 +2162,8 @@ func ExampleExchangeRate_Ceil_currencies() {
 	fmt.Println(p.Ceil(0))
 	// Output:
 	// EUR/JPY 6 <nil>
-	// EUR/USD 5.68 <nil>
-	// EUR/OMR 5.678 <nil>
+	// EUR/USD 6.00 <nil>
+	// EUR/OMR 6.000 <nil>
 }
 
 func ExampleExchangeRate_Ceil_scales() {
@@ -2179,8 +2174,8 @@ func ExampleExchangeRate_Ceil_scales() {
 	fmt.Println(r.Ceil(3))
 	fmt.Println(r.Ceil(4))
 	// Output:
-	// EUR/USD 5.68 <nil>
-	// EUR/USD 5.68 <nil>
+	// EUR/USD 6.00 <nil>
+	// EUR/USD 5.70 <nil>
 	// EUR/USD 5.68 <nil>
 	// EUR/USD 5.679 <nil>
 	// EUR/USD 5.6789 <nil>

@@ -46,7 +46,7 @@ Here are the ranges for scales 0, 2, and 3:
 	| US Dollar    | 2     |    -99,999,999,999,999,999.99        |    99,999,999,999,999,999.99        |
 	| Omani Rial   | 3     |     -9,999,999,999,999,999.999       |     9,999,999,999,999,999.999       |
 
-Subnoral numbers are not supported by the underlying [decimal.Decimal] type.
+Subnormal numbers are not supported by the underlying [decimal.Decimal] type.
 Consequently, amounts and exchange rates between -0.00000000000000000005 and
 0.00000000000000000005 inclusive are rounded to 0.
 

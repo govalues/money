@@ -9,10 +9,13 @@ import (
 	"github.com/govalues/decimal"
 )
 
-var errCurrencyMismatch = errors.New("currency mismatch")
+var (
+	errAmountOverflow   = errors.New("amount overflow")
+	errCurrencyMismatch = errors.New("currency mismatch")
+)
 
 // Amount type represents a monetary amount.
-// Its zero value corresponds to "XXX 0", where XXX indicates an unknown currency.
+// Its zero value corresponds to "XXX 0", where [XXX] indicates an unknown currency.
 // Amount is designed to be safe for concurrent use by multiple goroutines.
 type Amount struct {
 	curr  Currency        // ISO 4217 currency
@@ -28,10 +31,9 @@ func newAmountUnsafe(c Currency, d decimal.Decimal) Amount {
 // newAmountSafe creates a new amount and checks the scale.
 func newAmountSafe(c Currency, d decimal.Decimal) (Amount, error) {
 	if d.Scale() < c.Scale() {
-		var err error
-		d, err = d.Pad(c.Scale())
-		if err != nil {
-			return Amount{}, fmt.Errorf("padding amount: %w", err)
+		d = d.Pad(c.Scale())
+		if d.Scale() < c.Scale() {
+			return Amount{}, fmt.Errorf("padding amount: %w", errAmountOverflow)
 		}
 	}
 	return newAmountUnsafe(c, d), nil
@@ -224,17 +226,17 @@ func MustParseAmount(curr, amount string) Amount {
 // [rounding half to even]: https://en.wikipedia.org/wiki/Rounding#Rounding_half_to_even
 func (a Amount) MinorUnits() (units int64, ok bool) {
 	d := a.RoundToCurr().Decimal()
-	coef := d.Coef()
+	u := d.Coef()
 	if d.IsNeg() {
-		if coef > -math.MinInt64 {
+		if u > -math.MinInt64 {
 			return 0, false
 		}
-		return -int64(coef), true
+		return -int64(u), true
 	}
-	if coef > math.MaxInt64 {
+	if u > math.MaxInt64 {
 		return 0, false
 	}
-	return int64(coef), true
+	return int64(u), true
 }
 
 // Float64 returns the nearest binary floating-point number rounded
@@ -260,16 +262,11 @@ func (a Amount) Float64() (f float64, ok bool) {
 // This method is useful for converting amounts to [protobuf] format.
 // See also constructor [NewAmountFromInt64].
 //
-// Int64 returns false if:
-//   - given scale is smaller than the scale of the currency;
-//   - the result cannot be represented as a pair of int64 values.
+// Int64 returns false if the result cannot be represented as a pair of int64 values.
 //
 // [rounding half to even]: https://en.wikipedia.org/wiki/Rounding#Rounding_half_to_even
 // [protobuf]: https://github.com/googleapis/googleapis/blob/master/google/type/money.proto
 func (a Amount) Int64(scale int) (whole, frac int64, ok bool) {
-	if scale < a.Curr().Scale() {
-		return 0, 0, false
-	}
 	return a.Decimal().Int64(scale)
 }
 
@@ -337,11 +334,7 @@ func (a Amount) Scale() int {
 // without rounding.
 // See also method [Amount.Trim].
 func (a Amount) MinScale() int {
-	s := a.Decimal().MinScale()
-	if s < a.Curr().Scale() {
-		s = a.Curr().Scale()
-	}
-	return s
+	return a.Decimal().MinScale()
 }
 
 // IsZero returns:
@@ -662,17 +655,12 @@ func (a Amount) ULP() Amount {
 
 // Ceil returns an amount rounded up to the specified number of digits after
 // the decimal point using [rounding toward positive infinity].
-// If the given scale is less than the scale of the currency,
-// the amount will be rounded up to the scale of the currency instead.
 // See also methods [Amount.CeilToCurr], [Amount.Floor].
 //
 // [rounding toward positive infinity]: https://en.wikipedia.org/wiki/Rounding#Rounding_up
 func (a Amount) Ceil(scale int) Amount {
 	c, d := a.Curr(), a.Decimal()
-	if scale < c.Scale() {
-		scale = c.Scale()
-	}
-	d = d.Ceil(scale)
+	d = d.Ceil(scale).Pad(c.Scale())
 	return newAmountUnsafe(c, d)
 }
 
@@ -687,17 +675,12 @@ func (a Amount) CeilToCurr() Amount {
 
 // Floor returns an amount rounded down to the specified number of digits after
 // the decimal point using [rounding toward negative infinity].
-// If the given scale is less than the scale of the currency,
-// the amount will be rounded down to the scale of the currency instead.
 // See also methods [Amount.FloorToCurr], [Amount.Ceil].
 //
 // [rounding toward negative infinity]: https://en.wikipedia.org/wiki/Rounding#Rounding_down
 func (a Amount) Floor(scale int) Amount {
 	c, d := a.Curr(), a.Decimal()
-	if scale < c.Scale() {
-		scale = c.Scale()
-	}
-	d = d.Floor(scale)
+	d = d.Floor(scale).Pad(c.Scale())
 	return newAmountUnsafe(c, d)
 }
 
@@ -712,17 +695,12 @@ func (a Amount) FloorToCurr() Amount {
 
 // Trunc returns an amount truncated to the specified number of digits after
 // the decimal point using [rounding toward zero].
-// If the given scale is less than the scale of the currency,
-// the amount will be truncated to the scale of the currency instead.
 // See also method [Amount.TruncToCurr].
 //
 // [rounding toward zero]: https://en.wikipedia.org/wiki/Rounding#Rounding_toward_zero
 func (a Amount) Trunc(scale int) Amount {
 	c, d := a.Curr(), a.Decimal()
-	if scale < c.Scale() {
-		scale = c.Scale()
-	}
-	d = d.Trunc(scale)
+	d = d.Trunc(scale).Pad(c.Scale())
 	return newAmountUnsafe(c, d)
 }
 
@@ -737,17 +715,12 @@ func (a Amount) TruncToCurr() Amount {
 
 // Round returns an amount rounded to the specified number of digits after
 // the decimal point using [rounding half to even] (banker's rounding).
-// If the given scale is less than the scale of the currency,
-// the amount will be rounded to the scale of the currency instead.
 // See also methods [Amount.Rescale], [Amount.RoundToCurr].
 //
 // [rounding half to even]: https://en.wikipedia.org/wiki/Rounding#Rounding_half_to_even
 func (a Amount) Round(scale int) Amount {
 	c, d := a.Curr(), a.Decimal()
-	if scale < c.Scale() {
-		scale = c.Scale()
-	}
-	d = d.Round(scale)
+	d = d.Round(scale).Pad(c.Scale())
 	return newAmountUnsafe(c, d)
 }
 
@@ -763,43 +736,17 @@ func (a Amount) RoundToCurr() Amount {
 // Quantize returns an amount rescaled to the same scale as amount b.
 // The currency and the sign of amount b are ignored.
 // See also methods [Amount.Scale], [Amount.SameScale], [Amount.Rescale].
-//
-// Quantize returns an error if the integer part of the result has more than
-// ([decimal.MaxPrec] - b.Scale()) digits.
-func (a Amount) Quantize(b Amount) (Amount, error) {
-	c, err := a.rescale(b.Scale())
-	if err != nil {
-		return Amount{}, fmt.Errorf("quantizing %v to the scale of %v: %w", a, b, err)
-	}
-	return c, nil
+func (a Amount) Quantize(b Amount) Amount {
+	return a.Rescale(b.Scale())
 }
 
 // Rescale returns an amount rounded or zero-padded to the given number of digits
 // after the decimal point.
-// If the specified scale is less than the scale of the currency,
-// the amount will be rounded to the scale of the currency instead.
 // See also method [Amount.Round].
-//
-// Rescale returns an error if the integer part of the result more than
-// ([decimal.MaxPrec] - scale) digits.
-func (a Amount) Rescale(scale int) (Amount, error) {
-	c, err := a.rescale(scale)
-	if err != nil {
-		return Amount{}, fmt.Errorf("rescaling %v: %w", a, err)
-	}
-	return c, nil
-}
-
-func (a Amount) rescale(scale int) (Amount, error) {
+func (a Amount) Rescale(scale int) Amount {
 	c, d := a.Curr(), a.Decimal()
-	if scale < c.Scale() {
-		scale = c.Scale()
-	}
-	d, err := d.Rescale(scale)
-	if err != nil {
-		return Amount{}, err
-	}
-	return newAmountSafe(c, d)
+	d = d.Rescale(scale).Pad(c.Scale())
+	return newAmountUnsafe(c, d)
 }
 
 // Trim returns an amount with trailing zeros removed up to the given scale.
@@ -808,9 +755,7 @@ func (a Amount) rescale(scale int) (Amount, error) {
 // See also method [Amount.TrimToCurr].
 func (a Amount) Trim(scale int) Amount {
 	c, d := a.Curr(), a.Decimal()
-	if scale < c.Scale() {
-		scale = c.Scale()
-	}
+	scale = max(scale, c.Scale())
 	d = d.Trim(scale)
 	return newAmountUnsafe(c, d)
 }
@@ -1045,7 +990,7 @@ func (a Amount) Format(state fmt.State, verb rune) {
 	c, d := a.Curr(), a.Decimal()
 
 	// Rescaling
-	tzeroes := 0
+	tzeros := 0
 	if verb == 'f' || verb == 'F' || verb == 'd' || verb == 'D' {
 		scale := 0
 		switch p, ok := state.Precision(); {
@@ -1056,14 +1001,12 @@ func (a Amount) Format(state fmt.State, verb rune) {
 		case verb == 'f' || verb == 'F':
 			scale = d.Scale()
 		}
-		if scale < c.Scale() {
-			scale = c.Scale()
-		}
+		scale = max(scale, c.Scale())
 		switch {
 		case scale < d.Scale():
 			d = d.Round(scale)
 		case scale > d.Scale():
-			tzeroes = scale - d.Scale()
+			tzeros = scale - d.Scale()
 		}
 	}
 
@@ -1089,7 +1032,7 @@ func (a Amount) Format(state fmt.State, verb rune) {
 
 	// Decimal point
 	dpoint := 0
-	if fracdigs > 0 || tzeroes > 0 {
+	if fracdigs > 0 || tzeros > 0 {
 		dpoint = 1
 	}
 
@@ -1120,14 +1063,14 @@ func (a Amount) Format(state fmt.State, verb rune) {
 	}
 
 	// Calculating padding
-	width := lquote + currsyms + currdel + rsign + intdigs + dpoint + fracdigs + tzeroes + tquote
-	lspaces, lzeroes, tspaces := 0, 0, 0
+	width := lquote + currsyms + currdel + rsign + intdigs + dpoint + fracdigs + tzeros + tquote
+	lspaces, lzeros, tspaces := 0, 0, 0
 	if w, ok := state.Width(); ok && w > width {
 		switch {
 		case state.Flag('-'):
 			tspaces = w - width
 		case state.Flag('0') && verb != 'c' && verb != 'C':
-			lzeroes = w - width
+			lzeros = w - width
 		default:
 			lspaces = w - width
 		}
@@ -1149,8 +1092,8 @@ func (a Amount) Format(state fmt.State, verb rune) {
 		pos--
 	}
 
-	// Trailing zeroes
-	for i := 0; i < tzeroes; i++ {
+	// Trailing zeros
+	for i := 0; i < tzeros; i++ {
 		buf[pos] = '0'
 		pos--
 	}
@@ -1176,8 +1119,8 @@ func (a Amount) Format(state fmt.State, verb rune) {
 		coef /= 10
 	}
 
-	// Leading zeroes
-	for i := 0; i < lzeroes; i++ {
+	// Leading zeros
+	for i := 0; i < lzeros; i++ {
 		buf[pos] = '0'
 		pos--
 	}
@@ -1219,6 +1162,7 @@ func (a Amount) Format(state fmt.State, verb rune) {
 	}
 
 	// Writing result
+	//nolint:errcheck
 	switch verb {
 	case 'q', 'Q', 's', 'S', 'v', 'V', 'f', 'F', 'd', 'D', 'c', 'C':
 		state.Write(buf)

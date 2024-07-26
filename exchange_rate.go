@@ -8,8 +8,10 @@ import (
 	"github.com/govalues/decimal"
 )
 
+var errRateOverflow = fmt.Errorf("rate overflow")
+
 // ExchangeRate represents a unidirectional exchange rate between two currencies.
-// The zero value corresponds to an exchange rate of "XXX/XXX 0", where XXX indicates
+// The zero value corresponds to an exchange rate of "XXX/XXX 0", where [XXX] indicates
 // an unknown currency.
 // This type is designed to be safe for concurrent use by multiple goroutines.
 type ExchangeRate struct {
@@ -36,10 +38,9 @@ func newExchRateSafe(b, q Currency, d decimal.Decimal) (ExchangeRate, error) {
 		return ExchangeRate{}, fmt.Errorf("exchange rate between identical currencies must be equal to 1")
 	}
 	if d.Scale() < q.Scale() {
-		var err error
-		d, err = d.Pad(q.Scale())
-		if err != nil {
-			return ExchangeRate{}, fmt.Errorf("padding exchange rate: %w", err)
+		d = d.Pad(q.Scale())
+		if d.Scale() < q.Scale() {
+			return ExchangeRate{}, fmt.Errorf("padding exchange rate: %w", errRateOverflow)
 		}
 	}
 	return newExchRateUnsafe(b, q, d), nil
@@ -260,16 +261,11 @@ func (r ExchangeRate) Float64() (f float64, ok bool) {
 // This method is useful for converting rates to [protobuf] format.
 // See also constructor [NewExchRateFromInt64].
 //
-// Int64 returns false if:
-//   - given scale is smaller than the scale of the quote currency;
-//   - the result cannot be represented as a pair of int64 values.
+// Int64 returns false if the result cannot be represented as a pair of int64 values.
 //
 // [rounding half to even]: https://en.wikipedia.org/wiki/Rounding#Rounding_half_to_even
 // [protobuf]: https://github.com/googleapis/googleapis/blob/master/google/type/money.proto
 func (r ExchangeRate) Int64(scale int) (whole, frac int64, ok bool) {
-	if scale < r.Quote().Scale() {
-		return 0, 0, false
-	}
 	return r.Decimal().Int64(scale)
 }
 
@@ -294,7 +290,7 @@ func (r ExchangeRate) CanConv(b Amount) bool {
 func (r ExchangeRate) Conv(b Amount) (Amount, error) {
 	c, err := r.conv(b)
 	if err != nil {
-		return Amount{}, fmt.Errorf("computing [%v * %v]: %w", b, r, err)
+		return Amount{}, fmt.Errorf("converting [%v] to [%v]: %w", b, r.Quote(), err)
 	}
 	return c, nil
 }
@@ -387,11 +383,7 @@ func (r ExchangeRate) Scale() int {
 // without rounding.
 // See also method [ExchangeRate.Trim].
 func (r ExchangeRate) MinScale() int {
-	s := r.Decimal().MinScale()
-	if s < r.Quote().Scale() {
-		s = r.Quote().Scale()
-	}
-	return s
+	return r.Decimal().MinScale()
 }
 
 // IsZero returns:
@@ -436,24 +428,17 @@ func (r ExchangeRate) WithinOne() bool {
 
 // Ceil returns a rate rounded up to the specified number of digits after
 // the decimal point using [rounding toward positive infinity].
-// If the given scale is less than the scale of the quote currency,
-// the rate will be rounded up to the scale of the quote currency instead.
 // See also method [ExchangeRate.Floor].
 //
 // [rounding toward positive infinity]: https://en.wikipedia.org/wiki/Rounding#Rounding_up
 func (r ExchangeRate) Ceil(scale int) (ExchangeRate, error) {
 	b, q, d := r.Base(), r.Quote(), r.Decimal()
-	if scale < q.Scale() {
-		scale = q.Scale()
-	}
-	d = d.Ceil(scale)
+	d = d.Ceil(scale).Pad(q.Scale())
 	return newExchRateSafe(b, q, d)
 }
 
 // Floor returns a rate rounded down to the specified number of digits after
 // the decimal point using [rounding toward negative infinity].
-// If the given scale is less than the scale of the quote currency,
-// the rate will be rounded down to the scale of the quote currency instead.
 // See also method [ExchangeRate.Ceil].
 //
 // Floor returns an error if the result is 0.
@@ -461,10 +446,7 @@ func (r ExchangeRate) Ceil(scale int) (ExchangeRate, error) {
 // [rounding toward negative infinity]: https://en.wikipedia.org/wiki/Rounding#Rounding_down
 func (r ExchangeRate) Floor(scale int) (ExchangeRate, error) {
 	b, q, d := r.Base(), r.Quote(), r.Decimal()
-	if scale < q.Scale() {
-		scale = q.Scale()
-	}
-	d = d.Floor(scale)
+	d = d.Floor(scale).Pad(q.Scale())
 	p, err := newExchRateSafe(b, q, d)
 	if err != nil {
 		return ExchangeRate{}, fmt.Errorf("flooring %v: %w", r, err)
@@ -474,18 +456,13 @@ func (r ExchangeRate) Floor(scale int) (ExchangeRate, error) {
 
 // Trunc returns a rate truncated to the specified number of digits after
 // the decimal point using [rounding toward zero].
-// If the given scale is less than the scale of the quote currency,
-// the rate will be truncated to the scale of the quote currency instead.
 //
 // Trunc returns an error if the result is 0.
 //
 // [rounding toward zero]: https://en.wikipedia.org/wiki/Rounding#Rounding_toward_zero
 func (r ExchangeRate) Trunc(scale int) (ExchangeRate, error) {
 	b, q, d := r.Base(), r.Quote(), r.Decimal()
-	if scale < q.Scale() {
-		scale = q.Scale()
-	}
-	d = d.Trunc(scale)
+	d = d.Trunc(scale).Pad(q.Scale())
 	p, err := newExchRateSafe(b, q, d)
 	if err != nil {
 		return ExchangeRate{}, fmt.Errorf("truncating %v: %w", r, err)
@@ -498,17 +475,13 @@ func (r ExchangeRate) Trunc(scale int) (ExchangeRate, error) {
 // zeros will be removed up to the scale of the quote currency instead.
 func (r ExchangeRate) Trim(scale int) ExchangeRate {
 	b, q, d := r.Base(), r.Quote(), r.Decimal()
-	if scale < q.Scale() {
-		scale = q.Scale()
-	}
+	scale = max(scale, q.Scale())
 	d = d.Trim(scale)
 	return newExchRateUnsafe(b, q, d)
 }
 
 // Round returns a rate rounded to the specified number of digits after
 // the decimal point using [rounding half to even] (banker's rounding).
-// If the given scale is less than the scale of the quote currency,
-// the rate will be rounded to the scale of the quote currency instead.
 // See also method [ExchangeRate.Rescale].
 //
 // Round returns an error if the result is 0.
@@ -516,10 +489,7 @@ func (r ExchangeRate) Trim(scale int) ExchangeRate {
 // [rounding half to even]: https://en.wikipedia.org/wiki/Rounding#Rounding_half_to_even
 func (r ExchangeRate) Round(scale int) (ExchangeRate, error) {
 	b, q, d := r.Base(), r.Quote(), r.Decimal()
-	if scale < q.Scale() {
-		scale = q.Scale()
-	}
-	d = d.Round(scale)
+	d = d.Round(scale).Pad(q.Scale())
 	p, err := newExchRateSafe(b, q, d)
 	if err != nil {
 		return ExchangeRate{}, fmt.Errorf("rounding %v: %w", r, err)
@@ -531,10 +501,7 @@ func (r ExchangeRate) Round(scale int) (ExchangeRate, error) {
 // The currency and the sign of rate q are ignored.
 // See also methods [ExchangeRate.Scale], [ExchangeRate.SameScale], [ExchangeRate.Rescale].
 //
-// Quantize returns an error if:
-//   - the result is 0;
-//   - the integer part of the result has more than
-//     ([decimal.MaxPrec] - [Currency.Scale]) digits.
+// Quantize returns an error if the result is 0.
 func (r ExchangeRate) Quantize(q ExchangeRate) (ExchangeRate, error) {
 	p, err := r.rescale(q.Scale())
 	if err != nil {
@@ -545,14 +512,9 @@ func (r ExchangeRate) Quantize(q ExchangeRate) (ExchangeRate, error) {
 
 // Rescale returns a rate rounded or zero-padded to the given number of digits
 // after the decimal point.
-// If the specified scale is less than the scale of the quote currency,
-// the amount will be rounded to the scale of the quote currency instead.
 // See also method [ExchangeRate.Round].
 //
-// Rescale returns an error if:
-//   - the result is 0;
-//   - the integer part of the result has more than
-//     ([decimal.MaxPrec] - scale) digits.
+// Rescale returns an error if the result is 0.
 func (r ExchangeRate) Rescale(scale int) (ExchangeRate, error) {
 	q, err := r.rescale(scale)
 	if err != nil {
@@ -563,13 +525,7 @@ func (r ExchangeRate) Rescale(scale int) (ExchangeRate, error) {
 
 func (r ExchangeRate) rescale(scale int) (ExchangeRate, error) {
 	b, q, d := r.Base(), r.Quote(), r.Decimal()
-	if scale < q.Scale() {
-		scale = q.Scale()
-	}
-	d, err := d.Rescale(scale)
-	if err != nil {
-		return ExchangeRate{}, err
-	}
+	d = d.Rescale(scale).Pad(q.Scale())
 	return newExchRateSafe(b, q, d)
 }
 
@@ -658,28 +614,26 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 	b, q, d := r.Base(), r.Quote(), r.Decimal()
 
 	// Rescaling
-	tzeroes := 0
+	var tzeros int
 	if verb == 'f' || verb == 'F' {
-		scale := 0
+		var scale int
 		switch p, ok := state.Precision(); {
 		case ok:
 			scale = p
 		default:
 			scale = d.Scale()
 		}
-		if scale < q.Scale() {
-			scale = q.Scale()
-		}
+		scale = max(scale, q.Scale())
 		switch {
 		case scale < d.Scale():
 			d = d.Round(scale)
 		case scale > d.Scale():
-			tzeroes = scale - d.Scale()
+			tzeros = scale - d.Scale()
 		}
 	}
 
 	// Integer and fractional digits
-	intdigs, fracdigs := 0, 0
+	var intdigs, fracdigs int
 	switch rprec := d.Prec(); verb {
 	case 'b', 'B', 'c', 'C':
 		// skip
@@ -694,14 +648,14 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 	}
 
 	// Decimal point
-	dpoint := 0
-	if fracdigs > 0 || tzeroes > 0 {
+	var dpoint int
+	if fracdigs > 0 || tzeros > 0 {
 		dpoint = 1
 	}
 
 	// Currency codes and delimiters
 	basecode, quocode := "", ""
-	basesyms, quosyms, pairdel, currdel := 0, 0, 0, 0
+	var basesyms, quosyms, pairdel, currdel int
 	switch verb {
 	case 'f', 'F':
 		// skip
@@ -721,20 +675,20 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 	}
 
 	// Opening and closing quotes
-	lquote, tquote := 0, 0
+	var lquote, tquote int
 	if verb == 'q' || verb == 'Q' {
 		lquote, tquote = 1, 1
 	}
 
 	// Calculating padding
-	width := lquote + basesyms + pairdel + quosyms + currdel + intdigs + dpoint + fracdigs + tzeroes + tquote
-	lspaces, lzeroes, tspaces := 0, 0, 0
+	width := lquote + basesyms + pairdel + quosyms + currdel + intdigs + dpoint + fracdigs + tzeros + tquote
+	var lspaces, lzeros, tspaces int
 	if w, ok := state.Width(); ok && w > width {
 		switch {
 		case state.Flag('-'):
 			tspaces = w - width
 		case state.Flag('0') && verb != 'c' && verb != 'C' && verb != 'b' && verb != 'B':
-			lzeroes = w - width
+			lzeros = w - width
 		default:
 			lspaces = w - width
 		}
@@ -756,8 +710,8 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 		pos--
 	}
 
-	// Trailing zeroes
-	for i := 0; i < tzeroes; i++ {
+	// Trailing zeros
+	for i := 0; i < tzeros; i++ {
 		buf[pos] = '0'
 		pos--
 	}
@@ -783,8 +737,8 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 		coef /= 10
 	}
 
-	// Leading zeroes
-	for i := 0; i < lzeroes; i++ {
+	// Leading zeros
+	for i := 0; i < lzeros; i++ {
 		buf[pos] = '0'
 		pos--
 	}
@@ -826,6 +780,7 @@ func (r ExchangeRate) Format(state fmt.State, verb rune) {
 	}
 
 	// Writing result
+	//nolint:errcheck
 	switch verb {
 	case 'q', 'Q', 's', 'S', 'v', 'V', 'f', 'F', 'b', 'B', 'c', 'C':
 		state.Write(buf)
