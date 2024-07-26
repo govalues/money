@@ -52,25 +52,25 @@ import (
 
 func main() {
     // Constructors
-    a, _ := money.NewAmount("USD", 8, 0)               // a = USD 8.00
-    b, _ := money.ParseAmount("USD", "12.5")           // b = USD 12.50
-    c, _ := money.NewAmountFromFloat64("USD", 2.567)   // c = USD 2.567
-    d, _ := money.NewAmountFromInt64("USD", 7, 896, 3) // d = USD 7.896
-    r, _ := money.NewExchRate("USD", "EUR", 9, 1)      // r = USD/EUR 0.9
+    a, _ := money.NewAmount("USD", 8, 0)               // a = $8.00
+    b, _ := money.ParseAmount("USD", "12.5")           // b = $12.50
+    c, _ := money.NewAmountFromFloat64("USD", 2.567)   // c = $2.567
+    d, _ := money.NewAmountFromInt64("USD", 7, 896, 3) // d = $7.896
+    r, _ := money.NewExchRate("USD", "EUR", 9, 1)      // r = $/€ 0.9
     x, _ := decimal.New(2, 0)                          // x = 2
 
     // Operations
-    fmt.Println(a.Add(b))          // USD 8.00 + USD 12.50
-    fmt.Println(a.Sub(b))          // USD 8.00 - USD 12.50
+    fmt.Println(a.Add(b))          // $8.00 + $12.50
+    fmt.Println(a.Sub(b))          // $8.00 - $12.50
 
-    fmt.Println(a.Mul(x))          // USD 8.00 * 2
-    fmt.Println(a.FMA(x, b))       // USD 8.00 * 2 + USD 12.50
-    fmt.Println(r.Conv(a))         // USD 8.00 * USD/EUR 0.9
+    fmt.Println(a.Mul(x))          // $8.00 * 2
+    fmt.Println(a.FMA(x, b))       // $8.00 * 2 + $12.50
+    fmt.Println(r.Conv(a))         // $8.00 * $/€ 0.9
 
-    fmt.Println(a.Quo(x))          // USD 8.00 / 2
-    fmt.Println(a.QuoRem(x))       // USD 8.00 div 2, USD 8.00 mod 2
-    fmt.Println(a.Rat(b))          // USD 8.00 / USD 12.50
-    fmt.Println(a.Split(3))        // USD 8.00 into 3 parts
+    fmt.Println(a.Quo(x))          // $8.00 ÷ 2
+    fmt.Println(a.QuoRem(x))       // $8.00 ÷ 2, $8.00 mod 2
+    fmt.Println(a.Rat(b))          // $8.00 ÷ $12.50
+    fmt.Println(a.Split(3))        // $8.00 into 3 parts
 
     // Rounding to 2 decimal places
     fmt.Println(c.RoundToCurr())   // 2.57
@@ -95,7 +95,7 @@ func main() {
 ## Documentation
 
 For detailed documentation and additional examples, visit the package
-[documentation](https://pkg.go.dev/github.com/govalues/money#pkg-examples).
+[documentation](https://pkg.go.dev/github.com/govalues/money#section-documentation).
 
 ## Comparison
 
@@ -123,21 +123,21 @@ pkg: github.com/govalues/money-tests
 cpu: AMD Ryzen 7 3700C  with Radeon Vega Mobile Gfx 
 ```
 
-| Test Case   | Expression               | govalues | [rhymond] v1.0.10 | [bojanz] v1.2.1 | govalues vs rhymond | govalues vs bojanz |
-| ----------- | ------------------------ | -------: | ----------------: | --------------: | ------------------: | -----------------: |
-| Add         | USD 2.00 + USD 3.00      |   22.95n |           218.30n |         144.10n |            +851.41% |           +528.02% |
-| Mul         | USD 2.00 * 3             |   21.80n |           133.40n |         239.60n |            +511.79% |           +998.83% |
-| QuoFinite   | USD 2.00 / 4             |   80.12n |       n/a[^nodiv] |         468.05n |                 n/a |           +484.19% |
-| QuoInfinite | USD 2.00 / 3             |   602.1n |       n/a[^nodiv] |          512.4n |                 n/a |            -14.91% |
-| Split       | USD 2.00 into 10 parts   |   374.9n |            897.0n |   n/a[^nosplit] |            +139.28% |                n/a |
-| Conv        | USD 2.00 * USD/EUR 0.8   |   30.88n |      n/a[^noconv] |         348.50n |                 n/a |          +1028.38% |
-| Parse       | USD 1                    |   44.99n |           139.50n |          99.09n |            +210.07% |           +120.26% |
-| Parse       | USD 123.456              |   61.45n |           148.60n |         240.90n |            +141.82% |           +292.03% |
-| Parse       | USD 123456789.1234567890 |   131.2n |            204.4n |          253.0n |             +55.85% |            +92.87% |
-| String      | USD 1                    |   38.48n |           200.70n |          89.92n |            +421.50% |           +133.65% |
-| String      | USD 123.456              |   56.34n |           229.90n |         127.05n |            +308.02% |           +125.49% |
-| String      | USD 123456789.1234567890 |   84.73n |           383.30n |         277.55n |            +352.38% |           +227.57% |
-| Telco       | see [specification]      |   224.2n |   n/a[^nofracmul] |         1944.0n |                 n/a |           +766.89% |
+| Test Case   | Expression            | govalues | [rhymond] v1.0.10 | [bojanz] v1.2.1 | govalues vs rhymond | govalues vs bojanz |
+| ----------- | --------------------- | -------: | ----------------: | --------------: | ------------------: | -----------------: |
+| Add         | $2.00 + $3.00         |   22.95n |           218.30n |         144.10n |            +851.41% |           +528.02% |
+| Mul         | $2.00 * 3             |   21.80n |           133.40n |         239.60n |            +511.79% |           +998.83% |
+| QuoExact    | $2.00 ÷ 4             |   80.12n |       n/a[^nodiv] |         468.05n |                 n/a |           +484.19% |
+| QuoInfinite | $2.00 ÷ 3             |   602.1n |       n/a[^nodiv] |          512.4n |                 n/a |            -14.91% |
+| Split       | $2.00 into 10 parts   |   374.9n |            897.0n |   n/a[^nosplit] |            +139.28% |                n/a |
+| Conv        | $2.00 to €            |   30.88n |      n/a[^noconv] |         348.50n |                 n/a |          +1028.38% |
+| Parse       | $1                    |   44.99n |           139.50n |          99.09n |            +210.07% |           +120.26% |
+| Parse       | $123.456              |   61.45n |           148.60n |         240.90n |            +141.82% |           +292.03% |
+| Parse       | $123456789.1234567890 |   131.2n |            204.4n |          253.0n |             +55.85% |            +92.87% |
+| String      | $1                    |   38.48n |           200.70n |          89.92n |            +421.50% |           +133.65% |
+| String      | $123.456              |   56.34n |           229.90n |         127.05n |            +308.02% |           +125.49% |
+| String      | $123456789.1234567890 |   84.73n |           383.30n |         277.55n |            +352.38% |           +227.57% |
+| Telco       | see [specification]   |   224.2n |   n/a[^nofracmul] |         1944.0n |                 n/a |           +766.89% |
 
 [^nodiv]: [rhymond] does not support division.
 
@@ -149,21 +149,6 @@ cpu: AMD Ryzen 7 3700C  with Radeon Vega Mobile Gfx
 
 The benchmark results shown in the table are provided for informational purposes
 only and may vary depending on your specific use case.
-
-## Contributing
-
-Interested in contributing? Here's how to get started:
-
-1. Fork and clone the repository.
-1. Implement your changes.
-1. Write tests to cover your changes.
-1. Ensure all tests pass with `go test`.
-1. Commit and push to your fork.
-1. Open a pull request detailing your changes.
-
-**Note**: If you're considering significant changes, please open an issue first to
-discuss with the maintainers.
-This ensures alignment with the project's objectives and roadmap.
 
 [codecov]: https://codecov.io/gh/govalues/money
 [codecovb]: https://img.shields.io/codecov/c/github/govalues/money/main?color=brightcolor

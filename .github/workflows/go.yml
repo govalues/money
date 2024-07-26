@@ -11,30 +11,30 @@ jobs:
         go-version: [oldstable, stable]
     runs-on: ubuntu-latest
     steps:
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: false
 
-    - name: Setup Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ matrix.go-version }}
+      - name: Check out code
+        uses: actions/checkout@v4
 
-    - name: Check out code
-      uses: actions/checkout@v3
+      - name: Verify code formatting
+        run: gofmt -s -w . && git diff --exit-code
 
-    - name: Verify code formatting
-      run: gofmt -s -w . && git diff --exit-code
+      - name: Verify dependency consistency
+        run: go get -u -t . && go mod tidy && git diff --exit-code
 
-    - name: Verify dependency consistency
-      run: go get -u -t . && go mod tidy && git diff --exit-code
+      - name: Verify generated code
+        run: go generate ./... && git diff --exit-code
 
-    - name: Verify generated code
-      run: go generate ./... && git diff --exit-code
+      - name: Verify potential issues
+        uses: golangci/golangci-lint-action@v4
 
-    - name: Verify potential issues
-      uses: golangci/golangci-lint-action@v3
+      - name: Run tests with coverage
+        run: go test -race -shuffle=on -coverprofile="coverage.txt" -covermode=atomic ./...
 
-    - name: Run tests with coverage
-      run: go test -race -shuffle=on -coverprofile="coverage.txt" -covermode=atomic ./...
-
-    - name: Upload test coverage
-      if: matrix.go-version == 'stable'
-      uses: codecov/codecov-action@v3
+      - name: Upload test coverage
+        if: matrix.go-version == 'stable'
+        uses: codecov/codecov-action@v4

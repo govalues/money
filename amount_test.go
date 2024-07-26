@@ -18,12 +18,24 @@ func TestAmount_ZeroValue(t *testing.T) {
 	}
 }
 
-func TestAmount_Sizeof(t *testing.T) {
+func TestAmount_Size(t *testing.T) {
 	a := Amount{}
 	got := unsafe.Sizeof(a)
 	want := uintptr(24)
 	if got != want {
 		t.Errorf("unsafe.Sizeof(%q) = %v, want %v", a, got, want)
+	}
+}
+
+func TestAmount_Interfaces(t *testing.T) {
+	var i any = Amount{}
+	_, ok := i.(fmt.Stringer)
+	if !ok {
+		t.Errorf("%T does not implement fmt.Stringer", i)
+	}
+	_, ok = i.(fmt.Formatter)
+	if !ok {
+		t.Errorf("%T does not implement fmt.Formatter", i)
 	}
 }
 
@@ -115,7 +127,7 @@ func TestNewAmountFromInt64(t *testing.T) {
 			scale       int
 			want        string
 		}{
-			// Zeroes
+			// Zeros
 			{"JPY", 0, 0, 0, "0"},
 			{"JPY", 0, 0, 19, "0"},
 			{"USD", 0, 0, 0, "0.00"},
@@ -237,7 +249,7 @@ func TestNewAmountFromFloat64(t *testing.T) {
 			f    float64
 			want string
 		}{
-			// Zeroes
+			// Zeros
 			{"JPY", 0, "0"},
 			{"USD", 0, "0.00"},
 			{"OMR", 0, "0.000"},
@@ -1046,7 +1058,7 @@ func TestAmount_String(t *testing.T) {
 	tests := []struct {
 		curr, a, want string
 	}{
-		// Zeroes
+		// Zeros
 		{"JPY", "0", "JPY 0"},
 		{"JPY", "0.0", "JPY 0.0"},
 		{"USD", "0", "USD 0.00"},
@@ -1590,165 +1602,127 @@ func TestAmount_Clamp(t *testing.T) {
 }
 
 func TestAmount_Rescale(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		tests := []struct {
-			curr, a string
-			scale   int
-			want    string
-		}{
-			// Padding
-			{"JPY", "0", 0, "0"},
-			{"JPY", "0", 1, "0.0"},
-			{"JPY", "0", 2, "0.00"},
-			{"JPY", "0", 3, "0.000"},
-			{"USD", "0", 0, "0.00"},
-			{"USD", "0", 1, "0.00"},
-			{"USD", "0", 2, "0.00"},
-			{"USD", "0", 3, "0.000"},
-			{"OMR", "0", 0, "0.000"},
-			{"OMR", "0", 1, "0.000"},
-			{"OMR", "0", 2, "0.000"},
-			{"OMR", "0", 3, "0.000"},
-			{"USD", "0", 17, "0.00000000000000000"},
-			{"USD", "0", 18, "0.000000000000000000"},
-			{"USD", "0", 19, "0.0000000000000000000"},
-			{"USD", "1", 17, "1.00000000000000000"},
-			{"USD", "1", 18, "1.000000000000000000"},
+	tests := []struct {
+		curr, a string
+		scale   int
+		want    string
+	}{
+		// Padding
+		{"JPY", "0", 0, "0"},
+		{"JPY", "0", 1, "0.0"},
+		{"JPY", "0", 2, "0.00"},
+		{"JPY", "0", 3, "0.000"},
+		{"USD", "0", 0, "0.00"},
+		{"USD", "0", 1, "0.00"},
+		{"USD", "0", 2, "0.00"},
+		{"USD", "0", 3, "0.000"},
+		{"OMR", "0", 0, "0.000"},
+		{"OMR", "0", 1, "0.000"},
+		{"OMR", "0", 2, "0.000"},
+		{"OMR", "0", 3, "0.000"},
+		{"USD", "0", 17, "0.00000000000000000"},
+		{"USD", "0", 18, "0.000000000000000000"},
+		{"USD", "0", 19, "0.0000000000000000000"},
+		{"USD", "0", 20, "0.0000000000000000000"},
+		{"USD", "1", 17, "1.00000000000000000"},
+		{"USD", "1", 18, "1.000000000000000000"},
+		{"USD", "1", 19, "1.000000000000000000"},
 
-			// Half-to-even rounding
-			{"USD", "0.0049", 2, "0.00"},
-			{"USD", "0.0051", 2, "0.01"},
-			{"USD", "0.0149", 2, "0.01"},
-			{"USD", "0.0151", 2, "0.02"},
-			{"USD", "-0.0049", 2, "0.00"},
-			{"USD", "-0.0051", 2, "-0.01"},
-			{"USD", "-0.0149", 2, "-0.01"},
-			{"USD", "-0.0151", 2, "-0.02"},
-			{"USD", "0.0050", 2, "0.00"},
-			{"USD", "0.0150", 2, "0.02"},
-			{"USD", "0.0250", 2, "0.02"},
-			{"USD", "0.0350", 2, "0.04"},
-			{"USD", "-0.0050", 2, "0.00"},
-			{"USD", "-0.0150", 2, "-0.02"},
-			{"USD", "-0.0250", 2, "-0.02"},
-			{"USD", "-0.0350", 2, "-0.04"},
-			{"USD", "3.0448", 2, "3.04"},
-			{"USD", "3.0450", 2, "3.04"},
-			{"USD", "3.0452", 2, "3.05"},
-			{"USD", "3.0956", 2, "3.10"},
-		}
-		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			got, err := a.Rescale(tt.scale)
-			if err != nil {
-				t.Errorf("%q.Rescale(%v) failed: %v", a, tt.scale, err)
-				continue
-			}
-			want := MustParseAmount(tt.curr, tt.want)
-			if got != want {
-				t.Errorf("%q.Rescale(%v) = %q, want %q", a, tt.scale, got, want)
-			}
-		}
-	})
+		// Half-to-even rounding
+		{"USD", "0.0049", 2, "0.00"},
+		{"USD", "0.0051", 2, "0.01"},
+		{"USD", "0.0149", 2, "0.01"},
+		{"USD", "0.0151", 2, "0.02"},
+		{"USD", "-0.0049", 2, "0.00"},
+		{"USD", "-0.0051", 2, "-0.01"},
+		{"USD", "-0.0149", 2, "-0.01"},
+		{"USD", "-0.0151", 2, "-0.02"},
+		{"USD", "0.0050", 2, "0.00"},
+		{"USD", "0.0150", 2, "0.02"},
+		{"USD", "0.0250", 2, "0.02"},
+		{"USD", "0.0350", 2, "0.04"},
+		{"USD", "-0.0050", 2, "0.00"},
+		{"USD", "-0.0150", 2, "-0.02"},
+		{"USD", "-0.0250", 2, "-0.02"},
+		{"USD", "-0.0350", 2, "-0.04"},
+		{"USD", "3.0448", 2, "3.04"},
+		{"USD", "3.0450", 2, "3.04"},
+		{"USD", "3.0452", 2, "3.05"},
+		{"USD", "3.0956", 2, "3.10"},
 
-	t.Run("error", func(t *testing.T) {
-		tests := map[string]struct {
-			curr, a string
-			scale   int
-		}{
-			"overflow 1": {"JPY", "9999999999999999999", 1},
-			"overflow 2": {"USD", "99999999999999999.99", 3},
-			"overflow 3": {"OMR", "9999999999999999.999", 4},
-			"overflow 4": {"USD", "0", 20},
-			"overflow 5": {"USD", "1", 19},
+		// Padding overflow
+		{"JPY", "9999999999999999999", 1, "9999999999999999999"},
+		{"USD", "99999999999999999.99", 3, "99999999999999999.99"},
+		{"OMR", "9999999999999999.999", 4, "9999999999999999.999"},
+	}
+	for _, tt := range tests {
+		a := MustParseAmount(tt.curr, tt.a)
+		got := a.Rescale(tt.scale)
+		want := MustParseAmount(tt.curr, tt.want)
+		if got != want {
+			t.Errorf("%q.Rescale(%v) = %q, want %q", a, tt.scale, got, want)
 		}
-		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			_, err := a.Rescale(tt.scale)
-			if err == nil {
-				t.Errorf("%q.Rescale(%v) did not fail", a, tt.scale)
-			}
-		}
-	})
+	}
 }
 
 func TestAmount_Quantize(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		tests := []struct {
-			curr, a, b, want string
-		}{
-			// Padding
-			{"JPY", "0", "0", "0"},
-			{"JPY", "0", "0.0", "0.0"},
-			{"JPY", "0", "0.00", "0.00"},
-			{"JPY", "0", "0.000", "0.000"},
-			{"USD", "0", "0", "0.00"},
-			{"USD", "0", "0.0", "0.00"},
-			{"USD", "0", "0.00", "0.00"},
-			{"USD", "0", "0.000", "0.000"},
-			{"OMR", "0", "0", "0.000"},
-			{"OMR", "0", "0.0", "0.000"},
-			{"OMR", "0", "0.00", "0.000"},
-			{"OMR", "0", "0.000", "0.000"},
-			{"USD", "0", "0.00000000000000000", "0.00000000000000000"},
-			{"USD", "0", "0.000000000000000000", "0.000000000000000000"},
-			{"USD", "0", "0.0000000000000000000", "0.0000000000000000000"},
-			{"USD", "1", "0.00000000000000000", "1.00000000000000000"},
-			{"USD", "1", "0.000000000000000000", "1.000000000000000000"},
+	tests := []struct {
+		curr, a, b, want string
+	}{
+		// Padding
+		{"JPY", "0", "0", "0"},
+		{"JPY", "0", "0.0", "0.0"},
+		{"JPY", "0", "0.00", "0.00"},
+		{"JPY", "0", "0.000", "0.000"},
+		{"USD", "0", "0", "0.00"},
+		{"USD", "0", "0.0", "0.00"},
+		{"USD", "0", "0.00", "0.00"},
+		{"USD", "0", "0.000", "0.000"},
+		{"OMR", "0", "0", "0.000"},
+		{"OMR", "0", "0.0", "0.000"},
+		{"OMR", "0", "0.00", "0.000"},
+		{"OMR", "0", "0.000", "0.000"},
+		{"USD", "0", "0.00000000000000000", "0.00000000000000000"},
+		{"USD", "0", "0.000000000000000000", "0.000000000000000000"},
+		{"USD", "0", "0.0000000000000000000", "0.0000000000000000000"},
+		{"USD", "1", "0.00000000000000000", "1.00000000000000000"},
+		{"USD", "1", "0.000000000000000000", "1.000000000000000000"},
 
-			// Half-to-even rounding
-			{"USD", "0.0049", "0.00", "0.00"},
-			{"USD", "0.0051", "0.00", "0.01"},
-			{"USD", "0.0149", "0.00", "0.01"},
-			{"USD", "0.0151", "0.00", "0.02"},
-			{"USD", "-0.0049", "0.00", "0.00"},
-			{"USD", "-0.0051", "0.00", "-0.01"},
-			{"USD", "-0.0149", "0.00", "-0.01"},
-			{"USD", "-0.0151", "0.00", "-0.02"},
-			{"USD", "0.0050", "0.00", "0.00"},
-			{"USD", "0.0150", "0.00", "0.02"},
-			{"USD", "0.0250", "0.00", "0.02"},
-			{"USD", "0.0350", "0.00", "0.04"},
-			{"USD", "-0.0050", "0.00", "0.00"},
-			{"USD", "-0.0150", "0.00", "-0.02"},
-			{"USD", "-0.0250", "0.00", "-0.02"},
-			{"USD", "-0.0350", "0.00", "-0.04"},
-			{"USD", "3.0448", "0.00", "3.04"},
-			{"USD", "3.0450", "0.00", "3.04"},
-			{"USD", "3.0452", "0.00", "3.05"},
-			{"USD", "3.0956", "0.00", "3.10"},
-		}
-		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			b := MustParseAmount(tt.curr, tt.b)
-			got, err := a.Quantize(b)
-			if err != nil {
-				t.Errorf("%q.Quantize(%q) failed: %v", a, b, err)
-				continue
-			}
-			want := MustParseAmount(tt.curr, tt.want)
-			if got != want {
-				t.Errorf("%q.Quantize(%q) = %q, want %q", a, b, got, want)
-			}
-		}
-	})
+		// Half-to-even rounding
+		{"USD", "0.0049", "0.00", "0.00"},
+		{"USD", "0.0051", "0.00", "0.01"},
+		{"USD", "0.0149", "0.00", "0.01"},
+		{"USD", "0.0151", "0.00", "0.02"},
+		{"USD", "-0.0049", "0.00", "0.00"},
+		{"USD", "-0.0051", "0.00", "-0.01"},
+		{"USD", "-0.0149", "0.00", "-0.01"},
+		{"USD", "-0.0151", "0.00", "-0.02"},
+		{"USD", "0.0050", "0.00", "0.00"},
+		{"USD", "0.0150", "0.00", "0.02"},
+		{"USD", "0.0250", "0.00", "0.02"},
+		{"USD", "0.0350", "0.00", "0.04"},
+		{"USD", "-0.0050", "0.00", "0.00"},
+		{"USD", "-0.0150", "0.00", "-0.02"},
+		{"USD", "-0.0250", "0.00", "-0.02"},
+		{"USD", "-0.0350", "0.00", "-0.04"},
+		{"USD", "3.0448", "0.00", "3.04"},
+		{"USD", "3.0450", "0.00", "3.04"},
+		{"USD", "3.0452", "0.00", "3.05"},
+		{"USD", "3.0956", "0.00", "3.10"},
 
-	t.Run("error", func(t *testing.T) {
-		tests := map[string]struct {
-			curr, a, b string
-		}{
-			"overflow 1": {"JPY", "9999999999999999999", "0.1"},
-			"overflow 2": {"USD", "99999999999999999.99", "0.001"},
-			"overflow 3": {"OMR", "9999999999999999.999", "0.0001"},
-			"overflow 4": {"USD", "1", "0.0000000000000000000"},
+		// Padding overflow
+		{"JPY", "9999999999999999999", "0.1", "9999999999999999999"},
+		{"USD", "99999999999999999.99", "0.001", "99999999999999999.99"},
+		{"OMR", "9999999999999999.999", "0.0001", "9999999999999999.999"},
+		{"USD", "1", "0.0000000000000000000", "1.0000000000000000000"},
+	}
+	for _, tt := range tests {
+		a := MustParseAmount(tt.curr, tt.a)
+		b := MustParseAmount(tt.curr, tt.b)
+		got := a.Quantize(b)
+		want := MustParseAmount(tt.curr, tt.want)
+		if got != want {
+			t.Errorf("%q.Quantize(%q) = %q, want %q", a, b, got, want)
 		}
-		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			b := MustParseAmount(tt.curr, tt.b)
-			_, err := a.Quantize(b)
-			if err == nil {
-				t.Errorf("%q.Quantize(%q) did not fail", a, b)
-			}
-		}
-	})
+	}
 }

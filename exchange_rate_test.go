@@ -24,12 +24,24 @@ func TestExchangeRate_ZeroValue(t *testing.T) {
 	}
 }
 
-func TestExchangeRate_Sizeof(t *testing.T) {
+func TestExchangeRate_Size(t *testing.T) {
 	r := ExchangeRate{}
 	got := unsafe.Sizeof(r)
 	want := uintptr(24)
 	if got != want {
 		t.Errorf("unsafe.Sizeof(%q) = %v, want %v", r, got, want)
+	}
+}
+
+func TestExchangeRate_Interfaces(t *testing.T) {
+	var i any = ExchangeRate{}
+	_, ok := i.(fmt.Stringer)
+	if !ok {
+		t.Errorf("%T does not implement fmt.Stringer", i)
+	}
+	_, ok = i.(fmt.Formatter)
+	if !ok {
+		t.Errorf("%T does not implement fmt.Formatter", i)
 	}
 }
 
@@ -154,7 +166,8 @@ func TestNewExchRateFromInt64(t *testing.T) {
 		}{
 			"quote currency 1":  {"EUR", "UUU", 1, 0, 0},
 			"base currency 1":   {"EEE", "USD", 1, 0, 0},
-			"different signs 1": {"EUR", "USD", -1, 1, 0},
+			"different signs 1": {"EUR", "USD", -1, 1, 1},
+			"different signs 2": {"EUR", "USD", 1, -1, 1},
 			"fraction range 1":  {"EUR", "USD", 1, 1, 0},
 			"scale range 1":     {"EUR", "USD", 1, 1, -1},
 			"scale range 2":     {"EUR", "USD", 1, 0, -1},
@@ -592,8 +605,8 @@ func TestExchangeRate_Floor(t *testing.T) {
 			scale   int
 			want    string
 		}{
-			{"USD", "EUR", "0.8000", 0, "0.80"},
-			{"USD", "EUR", "0.0800", 1, "0.08"},
+			{"USD", "EUR", "0.8000", 1, "0.80"},
+			{"USD", "EUR", "0.0800", 2, "0.08"},
 		}
 		for _, tt := range tests {
 			r := MustParseExchRate(tt.b, tt.q, tt.r)
@@ -614,8 +627,10 @@ func TestExchangeRate_Floor(t *testing.T) {
 			base, quote, r string
 			scale          int
 		}{
-			"zero rate 1": {"USD", "EUR", "0.0080", 2},
-			"zero rate 2": {"USD", "EUR", "0.0008", 3},
+			"zero rate 0": {"USD", "EUR", "0.8000", 0},
+			"zero rate 1": {"USD", "EUR", "0.0800", 1},
+			"zero rate 2": {"USD", "EUR", "0.0080", 2},
+			"zero rate 3": {"USD", "EUR", "0.0008", 3},
 		}
 		for _, tt := range tests {
 			r := MustParseExchRate(tt.base, tt.quote, tt.r)
@@ -769,7 +784,6 @@ func TestExchangeRate_Rescale(t *testing.T) {
 		}{
 			"zero rate 1": {"USD", "EUR", "0.0050", 2},
 			"zero rate 2": {"USD", "EUR", "0.0005", 3},
-			"scale 1":     {"USD", "EUR", "0.0005", 20},
 		}
 		for _, tt := range tests {
 			r := MustParseExchRate(tt.base, tt.quote, tt.r)

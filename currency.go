@@ -9,16 +9,18 @@ import (
 //go:generate go run scripts/currency/codegen.go
 
 // Currency type represents a currency in the global financial system.
-// The zero value is "XXX", which indicates an unknown currency.
+// The zero value is [XXX], which indicates an unknown currency.
 //
 // Currency is implemented as an integer index into an in-memory array that
-// stores information such as code and scale.
+// stores properties defined by [ISO 4217], such as code and scale.
 // This design ensures safe concurrency for multiple goroutines accessing
 // the same Currency value.
 //
 // When persisting a currency value, use the alphabetic code returned by
 // the [Currency.Code] method, rather than the integer index, as mapping between
 // index and a particular currency may change in future versions.
+//
+// [ISO 4217]: https://en.wikipedia.org/wiki/ISO_4217
 type Currency uint8
 
 var errUnknownCurrency = errors.New("unknown currency")
@@ -44,7 +46,7 @@ func ParseCurr(curr string) (Currency, error) {
 func MustParseCurr(curr string) Currency {
 	c, err := ParseCurr(curr)
 	if err != nil {
-		panic(fmt.Sprintf("MustParseCurr(%q) failed: %v", curr, err))
+		panic(fmt.Sprintf("ParseCurr(%q) failed: %v", curr, err))
 	}
 	return c
 }
@@ -114,13 +116,17 @@ func (c Currency) MarshalText() ([]byte, error) {
 // See also method [ParseCurr].
 //
 // [sql.Scanner]: https://pkg.go.dev/database/sql#Scanner
-func (c *Currency) Scan(v any) error {
+func (c *Currency) Scan(value any) error {
 	var err error
-	switch v := v.(type) {
+	switch value := value.(type) {
 	case string:
-		*c, err = ParseCurr(v)
+		*c, err = ParseCurr(value)
+	case []byte:
+		*c, err = ParseCurr(string(value))
+	case nil:
+		err = fmt.Errorf("converting to %T: nil is not supported", c)
 	default:
-		err = fmt.Errorf("failed to convert from %T to %T", v, XXX)
+		err = fmt.Errorf("converting from %T to %T: type %T is not supported", value, c, value)
 	}
 	return err
 }
@@ -203,6 +209,7 @@ func (c Currency) Format(state fmt.State, verb rune) {
 	}
 
 	// Writing result
+	//nolint:errcheck
 	switch verb {
 	case 'q', 'Q', 's', 'S', 'v', 'V', 'c', 'C':
 		state.Write(buf)

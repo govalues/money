@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.3] - 2024-07-26
+
+### Changed
+
+- Allowed rounding to the scale smaller than the currency scale.
+
 ## [0.2.2] - 2023-12-18
 
 ### Changed
