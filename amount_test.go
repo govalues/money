@@ -321,8 +321,8 @@ func TestNewAmountFromFloat64(t *testing.T) {
 
 func TestNewAmountFromDecimal(t *testing.T) {
 	tests := []struct {
-		curr   Currency
-		a      string
+		m      Currency
+		d      string
 		wantOk bool
 	}{
 		{JPY, "1", true},
@@ -333,13 +333,13 @@ func TestNewAmountFromDecimal(t *testing.T) {
 		{OMR, "10000000000000000", false},
 	}
 	for _, tt := range tests {
-		amount := decimal.MustParse(tt.a)
-		_, err := NewAmountFromDecimal(tt.curr, amount)
+		amount := decimal.MustParse(tt.d)
+		_, err := NewAmountFromDecimal(tt.m, amount)
 		if !tt.wantOk && err == nil {
-			t.Errorf("NewAmountFromDecimal(%v, %v) did not fail", tt.curr, amount)
+			t.Errorf("NewAmountFromDecimal(%v, %v) did not fail", tt.m, amount)
 		}
 		if tt.wantOk && err != nil {
-			t.Errorf("NewAmountFromDecimal(%v, %v) failed: %v", tt.curr, amount, err)
+			t.Errorf("NewAmountFromDecimal(%v, %v) failed: %v", tt.m, amount, err)
 		}
 	}
 }
@@ -347,7 +347,7 @@ func TestNewAmountFromDecimal(t *testing.T) {
 func TestParseAmount(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a   string
+			m, d      string
 			wantCurr  Currency
 			wantCoef  int64
 			wantScale int
@@ -362,9 +362,9 @@ func TestParseAmount(t *testing.T) {
 			{"USD", "1.00000", USD, 100000, 5},
 		}
 		for _, tt := range tests {
-			got, err := ParseAmount(tt.curr, tt.a)
+			got, err := ParseAmount(tt.m, tt.d)
 			if err != nil {
-				t.Errorf("ParseAmount(%q, %q) failed: %v", tt.curr, tt.a, err)
+				t.Errorf("ParseAmount(%q, %q) failed: %v", tt.m, tt.d, err)
 				continue
 			}
 			wantAmount, err := decimal.New(tt.wantCoef, tt.wantScale)
@@ -378,14 +378,14 @@ func TestParseAmount(t *testing.T) {
 				continue
 			}
 			if got != want {
-				t.Errorf("ParseAmount(%q, %q) = %q, want %q", tt.curr, tt.a, got, want)
+				t.Errorf("ParseAmount(%q, %q) = %q, want %q", tt.m, tt.d, got, want)
 			}
 		}
 	})
 
 	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
-			curr, a string
+			m, a string
 		}{
 			"currency 1": {"///", "1"},
 			"currency 2": {"ZZZ", "1.0"},
@@ -395,9 +395,9 @@ func TestParseAmount(t *testing.T) {
 		}
 		for name, tt := range tests {
 			t.Run(name, func(t *testing.T) {
-				_, err := ParseAmount(tt.curr, tt.a)
+				_, err := ParseAmount(tt.m, tt.a)
 				if err == nil {
-					t.Errorf("ParseAmount(%q, %q) did not fail", tt.curr, tt.a)
+					t.Errorf("ParseAmount(%q, %q) did not fail", tt.m, tt.a)
 				}
 			})
 		}
@@ -417,7 +417,7 @@ func TestMustParseAmount(t *testing.T) {
 
 func TestAmount_MinorUnits(t *testing.T) {
 	tests := []struct {
-		curr, a   string
+		m, d      string
 		wantUnits int64
 		wantOk    bool
 	}{
@@ -472,7 +472,7 @@ func TestAmount_MinorUnits(t *testing.T) {
 		{"USD", "92233720368547758.08", 0, false},
 	}
 	for _, tt := range tests {
-		a := MustParseAmount(tt.curr, tt.a)
+		a := MustParseAmount(tt.m, tt.d)
 		gotUnits, gotOk := a.MinorUnits()
 		if gotUnits != tt.wantUnits || gotOk != tt.wantOk {
 			t.Errorf("%q.MinorUnits() = [%v %v], want [%v %v]", a, gotUnits, gotOk, tt.wantUnits, tt.wantOk)
@@ -482,8 +482,8 @@ func TestAmount_MinorUnits(t *testing.T) {
 
 func TestAmount_SameScaleAsCurr(t *testing.T) {
 	tests := []struct {
-		curr, a string
-		want    bool
+		m, d string
+		want bool
 	}{
 		{"USD", "1.00", true},
 		{"USD", "1.000", false},
@@ -491,7 +491,7 @@ func TestAmount_SameScaleAsCurr(t *testing.T) {
 		{"USD", "1.00000", false},
 	}
 	for _, tt := range tests {
-		a := MustParseAmount(tt.curr, tt.a)
+		a := MustParseAmount(tt.m, tt.d)
 		got := a.SameScaleAsCurr()
 		if got != tt.want {
 			t.Errorf("%q.SameScaleAsCurr() = %v, want %v", a, got, tt.want)
@@ -501,7 +501,7 @@ func TestAmount_SameScaleAsCurr(t *testing.T) {
 
 func MustParseAmountSlice(curr string, amounts []string) []Amount {
 	res := make([]Amount, len(amounts))
-	for i := 0; i < len(amounts); i++ {
+	for i := range len(amounts) {
 		res[i] = MustParseAmount(curr, amounts[i])
 	}
 	return res
@@ -510,7 +510,7 @@ func MustParseAmountSlice(curr string, amounts []string) []Amount {
 func TestAmount_Add(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, b, want string
+			m, d, e, want string
 		}{
 			// There are few test cases here since Decimal.Add
 			// is already tested by the cases in the decimal package.
@@ -531,14 +531,14 @@ func TestAmount_Add(t *testing.T) {
 			{"USD", "99999999999999999.99", "-0.01", "99999999999999999.98"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			b := MustParseAmount(tt.curr, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.m, tt.e)
 			got, err := a.Add(b)
 			if err != nil {
 				t.Errorf("%q.Add(%q) failed: %v", a, b, err)
 				continue
 			}
-			want := MustParseAmount(tt.curr, tt.want)
+			want := MustParseAmount(tt.m, tt.want)
 			if got != want {
 				t.Errorf("%q.Add(%q) = %q, want %q", a, b, got, want)
 			}
@@ -547,7 +547,7 @@ func TestAmount_Add(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
-			curra, a, currb, b string
+			m, d, n, e string
 		}{
 			"currency 1": {"USD", "1", "JPY", "1"},
 			"currency 2": {"USD", "1", "EUR", "1"},
@@ -557,8 +557,8 @@ func TestAmount_Add(t *testing.T) {
 			"overflow 4": {"USD", "-99999999999999999.99", "USD", "-0.006"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curra, tt.a)
-			b := MustParseAmount(tt.currb, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.n, tt.e)
 			_, err := a.Add(b)
 			if err == nil {
 				t.Errorf("%q.Add(%q) did not fail", a, b)
@@ -570,7 +570,7 @@ func TestAmount_Add(t *testing.T) {
 func TestAmount_Sub(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, b, want string
+			m, d, e, want string
 		}{
 			// There are few test cases here since Decimal.Sub
 			// is already tested by the cases in the decimal package.
@@ -591,14 +591,14 @@ func TestAmount_Sub(t *testing.T) {
 			{"USD", "99999999999999999.99", "0.01", "99999999999999999.98"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			b := MustParseAmount(tt.curr, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.m, tt.e)
 			got, err := a.Sub(b)
 			if err != nil {
 				t.Errorf("%q.Sub(%q) failed: %v", a, b, err)
 				continue
 			}
-			want := MustParseAmount(tt.curr, tt.want)
+			want := MustParseAmount(tt.m, tt.want)
 			if got != want {
 				t.Errorf("%q.Sub(%q) = %q, want %q", a, b, got, want)
 			}
@@ -607,7 +607,7 @@ func TestAmount_Sub(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
-			curra, a, currb, b string
+			m, d, n, e string
 		}{
 			"currency 1": {"USD", "1", "JPY", "1"},
 			"currency 2": {"USD", "1", "EUR", "1"},
@@ -617,8 +617,8 @@ func TestAmount_Sub(t *testing.T) {
 			"overflow 4": {"USD", "-99999999999999999.99", "USD", "0.006"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curra, tt.a)
-			b := MustParseAmount(tt.currb, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.n, tt.e)
 			_, err := a.Sub(b)
 			if err == nil {
 				t.Errorf("%q.Sub(%q) did not fail", a, b)
@@ -630,7 +630,7 @@ func TestAmount_Sub(t *testing.T) {
 func TestAmount_SubAbs(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, b, want string
+			m, d, e, want string
 		}{
 			{"USD", "1", "1", "0"},
 			{"USD", "2", "1", "1"},
@@ -649,14 +649,14 @@ func TestAmount_SubAbs(t *testing.T) {
 			{"USD", "99999999999999999.99", "0.01", "99999999999999999.98"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			b := MustParseAmount(tt.curr, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.m, tt.e)
 			got, err := a.SubAbs(b)
 			if err != nil {
 				t.Errorf("%q.SubAbs(%q) failed: %v", a, b, err)
 				continue
 			}
-			want := MustParseAmount(tt.curr, tt.want)
+			want := MustParseAmount(tt.m, tt.want)
 			if got != want {
 				t.Errorf("%q.SubAbs(%q) = %q, want %q", a, b, got, want)
 			}
@@ -665,7 +665,7 @@ func TestAmount_SubAbs(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
-			curra, a, currb, b string
+			m, d, n, e string
 		}{
 			"currency 1": {"USD", "1", "JPY", "1"},
 			"currency 2": {"USD", "1", "EUR", "1"},
@@ -675,8 +675,8 @@ func TestAmount_SubAbs(t *testing.T) {
 			"overflow 4": {"USD", "-99999999999999999.99", "USD", "0.006"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curra, tt.a)
-			b := MustParseAmount(tt.currb, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.n, tt.e)
 			_, err := a.SubAbs(b)
 			if err == nil {
 				t.Errorf("%q.SubAbs(%q) did not fail", a, b)
@@ -685,82 +685,79 @@ func TestAmount_SubAbs(t *testing.T) {
 	})
 }
 
-func TestAmount_FMA(t *testing.T) {
+func TestAmount_AddMul(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, e, b, want string
+			curr, d, e, f, want string
 		}{
-			// There are few test cases here since Decimal.FMA
-			// is already tested by the cases in the decimal package.
-
 			// Addition
 			{"USD", "1", "1", "1", "2"},
-			{"USD", "2", "1", "3", "5"},
-			{"USD", "5.75", "1", "3.3", "9.05"},
-			{"USD", "5", "1", "-3", "2"},
-			{"USD", "-5", "1", "-3", "-8"},
-			{"USD", "-7", "1", "2.5", "-4.5"},
-			{"USD", "0.7", "1", "0.3", "1.0"},
-			{"USD", "1.25", "1", "1.25", "2.50"},
-			{"USD", "1.1", "1", "0.11", "1.21"},
-			{"USD", "1.234567890", "1", "1.000000000", "2.234567890"},
-			{"USD", "1.234567890", "1", "1.000000110", "2.234568000"},
-			{"USD", "99999999999999999.99", "1", "0.004", "99999999999999999.99"},
-			{"USD", "-99999999999999999.99", "1", "-0.004", "-99999999999999999.99"},
-			{"USD", "0.01", "1", "-99999999999999999.99", "-99999999999999999.98"},
-			{"USD", "99999999999999999.99", "1", "-0.01", "99999999999999999.98"},
+			{"USD", "3", "2", "1", "5"},
+			{"USD", "3.3", "5.75", "1", "9.05"},
+			{"USD", "-3", "5", "1", "2"},
+			{"USD", "-3", "-5", "1", "-8"},
+			{"USD", "2.5", "-7", "1", "-4.5"},
+			{"USD", "0.3", "0.7", "1", "1.0"},
+			{"USD", "1.25", "1.25", "1", "2.50"},
+			{"USD", "0.11", "1.1", "1", "1.21"},
+			{"USD", "1.000000000", "1.234567890", "1", "2.234567890"},
+			{"USD", "1.000000110", "1.234567890", "1", "2.234568000"},
+			{"USD", "0.004", "99999999999999999.99", "1", "99999999999999999.99"},
+			{"USD", "-0.004", "-99999999999999999.99", "1", "-99999999999999999.99"},
+			{"USD", "-99999999999999999.99", "0.01", "1", "-99999999999999999.98"},
+			{"USD", "-0.01", "99999999999999999.99", "1", "99999999999999999.98"},
 
 			// Multiplication
-			{"USD", "2", "2", "0", "4"},
-			{"USD", "2", "3", "0", "6"},
-			{"USD", "5", "1", "0", "5"},
-			{"USD", "5", "2", "0", "10"},
-			{"USD", "1.20", "2", "0", "2.40"},
-			{"USD", "1.20", "0", "0", "0.00"},
-			{"USD", "1.20", "-2", "0", "-2.40"},
-			{"USD", "-1.20", "2", "0", "-2.40"},
-			{"USD", "-1.20", "0", "0", "0.00"},
-			{"USD", "-1.20", "-2", "0", "2.40"},
-			{"USD", "5.09", "7.1", "0", "36.139"},
-			{"USD", "2.5", "4", "0", "10.0"},
-			{"USD", "2.50", "4", "0", "10.00"},
-			{"USD", "0.70", "1.05", "0", "0.7350"},
+			{"USD", "0", "2", "2", "4"},
+			{"USD", "0", "2", "3", "6"},
+			{"USD", "0", "5", "1", "5"},
+			{"USD", "0", "5", "2", "10"},
+			{"USD", "0", "1.20", "2", "2.40"},
+			{"USD", "0", "1.20", "0", "0.00"},
+			{"USD", "0", "1.20", "-2", "-2.40"},
+			{"USD", "0", "-1.20", "2", "-2.40"},
+			{"USD", "0", "-1.20", "0", "0.00"},
+			{"USD", "0", "-1.20", "-2", "2.40"},
+			{"USD", "0", "5.09", "7.1", "36.139"},
+			{"USD", "0", "2.5", "4", "10.0"},
+			{"USD", "0", "2.50", "4", "10.00"},
+			{"USD", "0", "0.70", "1.05", "0.7350"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			e := decimal.MustParse(tt.e)
-			b := MustParseAmount(tt.curr, tt.b)
-			got, err := a.FMA(e, b)
+			a := MustParseAmount(tt.curr, tt.d)
+			b := MustParseAmount(tt.curr, tt.e)
+			e := decimal.MustParse(tt.f)
+			got, err := a.AddMul(b, e)
 			if err != nil {
-				t.Errorf("%q.FMA(%q, %q) failed: %v", a, e, b, err)
+				t.Errorf("%q.AddMul(%q, %q) failed: %v", a, b, e, err)
 				continue
 			}
 			want := MustParseAmount(tt.curr, tt.want)
 			if got != want {
-				t.Errorf("%q.FMA(%q, %q) = %q, want %q", a, e, b, got, want)
+				t.Errorf("%q.AddMul(%q, %q) = %q, want %q", a, b, e, got, want)
 			}
 		}
 	})
 
 	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
-			curra, a, e, currb, b string
+			m, d, n, e, f string
 		}{
-			"overflow 1": {"JPY", "1", "9999999999999999999", "JPY", "1"},
-			"overflow 2": {"JPY", "1", "9999999999999999999", "JPY", "0.6"},
-			"overflow 3": {"JPY", "1", "-9999999999999999999", "JPY", "-1"},
-			"overflow 4": {"JPY", "1", "-9999999999999999999", "JPY", "-0.6"},
-			"overflow 5": {"JPY", "10000000000", "1000000000", "JPY", "0"},
-			"overflow 6": {"JPY", "1000000000000000000", "10", "JPY", "0"},
-			"currency 1": {"JPY", "1", "1", "USD", "1"},
+			"overflow 1": {"JPY", "1", "JPY", "1", "9999999999999999999"},
+			"overflow 2": {"JPY", "0.6", "JPY", "1", "9999999999999999999"},
+			"overflow 3": {"JPY", "-1", "JPY", "1", "-9999999999999999999"},
+			"overflow 4": {"JPY", "-0.6", "JPY", "1", "-9999999999999999999"},
+			"overflow 5": {"JPY", "0", "JPY", "10000000000", "1000000000"},
+			"overflow 6": {"JPY", "0", "JPY", "1000000000000000000", "10"},
+			"currency 1": {"USD", "1", "JPY", "1", "1"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curra, tt.a)
-			e := decimal.MustParse(tt.e)
-			b := MustParseAmount(tt.currb, tt.b)
-			_, err := a.FMA(e, b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.n, tt.e)
+			e := decimal.MustParse(tt.f)
+			_, err := a.AddMul(b, e)
 			if err == nil {
-				t.Errorf("%q.FMA(%q, %q) did not fail", a, e, b)
+				t.Errorf("%q.AddMul(%q, %q) did not fail", a, b, e)
 			}
 		}
 	})
@@ -769,7 +766,7 @@ func TestAmount_FMA(t *testing.T) {
 func TestAmount_Rat(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, b, want string
+			m, d, e, want string
 		}{
 			// There are few test cases here since Decimal.Quo
 			// is already tested by the cases in the decimal package.
@@ -793,8 +790,8 @@ func TestAmount_Rat(t *testing.T) {
 			{"USD", "99999999999999999.99", "99999999999999999.99", "1"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			b := MustParseAmount(tt.curr, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.m, tt.e)
 			got, err := a.Rat(b)
 			if err != nil {
 				t.Errorf("%q.Rat(%q) failed: %v", a, b, err)
@@ -809,14 +806,14 @@ func TestAmount_Rat(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
-			curra, a, currb, b string
+			m, d, n, e string
 		}{
 			"overflow 1": {"USD", "10000000000000000", "USD", "0.001"},
 			"zero 1":     {"USD", "1", "USD", "0"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curra, tt.a)
-			b := MustParseAmount(tt.currb, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.n, tt.e)
 			_, err := a.Rat(b)
 			if err == nil {
 				t.Errorf("%q.Rat(%q) did not fail", a, b)
@@ -828,7 +825,7 @@ func TestAmount_Rat(t *testing.T) {
 func TestAmount_Quo(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, e, want string
+			m, d, e, want string
 		}{
 			// There are few test cases here since Decimal.Quo
 			// is already tested by the cases in the decimal package.
@@ -852,14 +849,14 @@ func TestAmount_Quo(t *testing.T) {
 			{"USD", "99999999999999999.99", "99999999999999999.99", "1"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
+			a := MustParseAmount(tt.m, tt.d)
 			e := decimal.MustParse(tt.e)
 			got, err := a.Quo(e)
 			if err != nil {
 				t.Errorf("%q.Quo(%q) failed: %v", a, e, err)
 				continue
 			}
-			want := MustParseAmount(tt.curr, tt.want)
+			want := MustParseAmount(tt.m, tt.want)
 			if got != want {
 				t.Errorf("%q.Quo(%q) = %q, want %q", a, e, got, want)
 			}
@@ -868,13 +865,13 @@ func TestAmount_Quo(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
-			curr, a, e string
+			m, d, e string
 		}{
 			"zero 1":     {"USD", "1", "0"},
 			"overflow 1": {"USD", "99999999999999999", "0.1"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
+			a := MustParseAmount(tt.m, tt.d)
 			e := decimal.MustParse(tt.e)
 			_, err := a.Quo(e)
 			if err == nil {
@@ -887,7 +884,7 @@ func TestAmount_Quo(t *testing.T) {
 func TestAmount_QuoRem(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, e, wantQuo, wantRem string
+			m, d, e, wantQuo, wantRem string
 		}{
 			{"USD", "0.00", "1", "0.00", "0.00"},
 			{"USD", "1.00", "1", "1.00", "0.00"},
@@ -906,15 +903,15 @@ func TestAmount_QuoRem(t *testing.T) {
 			{"USD", "-2.401", "-1", "2.40", "-0.001"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
+			a := MustParseAmount(tt.m, tt.d)
 			e := decimal.MustParse(tt.e)
 			gotQuo, gotRem, err := a.QuoRem(e)
 			if err != nil {
 				t.Errorf("%q.QuoRem(%q) failed: %v", a, e, err)
 				continue
 			}
-			wantQuo := MustParseAmount(tt.curr, tt.wantQuo)
-			wantRem := MustParseAmount(tt.curr, tt.wantRem)
+			wantQuo := MustParseAmount(tt.m, tt.wantQuo)
+			wantRem := MustParseAmount(tt.m, tt.wantRem)
 			if gotQuo != wantQuo || gotRem != wantRem {
 				t.Errorf("%q.QuoRem(%q) = [%q %q], want [%q %q]", a, e, gotQuo, gotRem, wantQuo, wantRem)
 			}
@@ -923,13 +920,13 @@ func TestAmount_QuoRem(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
-			curr, a, e string
+			m, d, e string
 		}{
 			"zero 1":     {"USD", "1", "0"},
 			"overflow 1": {"USD", "99999999999999999", "0.1"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
+			a := MustParseAmount(tt.m, tt.d)
 			e := decimal.MustParse(tt.e)
 			_, _, err := a.QuoRem(e)
 			if err == nil {
@@ -978,13 +975,13 @@ func TestAmount_Mul(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		tests := map[string]struct {
-			curr, a, e string
+			m, d, e string
 		}{
 			"overflow 1": {"USD", "10000000000", "1000000000"},
 			"overflow 2": {"USD", "10000000000000000", "1000"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
+			a := MustParseAmount(tt.m, tt.d)
 			e := decimal.MustParse(tt.e)
 			_, err := a.Mul(e)
 			if err == nil {
@@ -997,9 +994,9 @@ func TestAmount_Mul(t *testing.T) {
 func TestAmount_Split(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a string
-			parts   int
-			want    []string
+			m, d  string
+			parts int
+			want  []string
 		}{
 			{"OMR", "0.0001", 3, []string{"0.0001", "0.0000", "0.0000"}},
 			{"OMR", "-0.0001", 3, []string{"-0.0001", "0.0000", "0.0000"}},
@@ -1031,13 +1028,13 @@ func TestAmount_Split(t *testing.T) {
 			{"USD", "-1.01", 6, []string{"-0.17", "-0.17", "-0.17", "-0.17", "-0.17", "-0.16"}},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
+			a := MustParseAmount(tt.m, tt.d)
 			got, err := a.Split(tt.parts)
 			if err != nil {
 				t.Errorf("%q.Split(%v) failed: %v", a, tt.parts, err)
 				continue
 			}
-			want := MustParseAmountSlice(tt.curr, tt.want)
+			want := MustParseAmountSlice(tt.m, tt.want)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("%q.Split(%v) = %v, want %v", a, tt.parts, got, want)
 			}
@@ -1056,7 +1053,7 @@ func TestAmount_Split(t *testing.T) {
 
 func TestAmount_String(t *testing.T) {
 	tests := []struct {
-		curr, a, want string
+		m, d, want string
 	}{
 		// Zeros
 		{"JPY", "0", "JPY 0"},
@@ -1076,7 +1073,7 @@ func TestAmount_String(t *testing.T) {
 		{"USD", "1", "USD 1.00"},
 	}
 	for _, tt := range tests {
-		a := MustParseAmount(tt.curr, tt.a)
+		a := MustParseAmount(tt.m, tt.d)
 		got := a.String()
 		if got != tt.want {
 			t.Errorf("%q.String() = %q, want %q", a, got, tt.want)
@@ -1086,7 +1083,7 @@ func TestAmount_String(t *testing.T) {
 
 func TestAmount_Format(t *testing.T) {
 	tests := []struct {
-		curr, a, format, want string
+		m, d, format, want string
 	}{
 		// %T verb
 		{"USD", "100.00", "%T", "money.Amount"},
@@ -1200,7 +1197,7 @@ func TestAmount_Format(t *testing.T) {
 		{"USD", "12.34", "%X", "%!X(money.Amount=USD 12.34)"},
 	}
 	for _, tt := range tests {
-		a := MustParseAmount(tt.curr, tt.a)
+		a := MustParseAmount(tt.m, tt.d)
 		got := fmt.Sprintf(tt.format, a)
 		if got != tt.want {
 			t.Errorf("fmt.Sprintf(%q, %q) = %q, want %q", tt.format, a, got, tt.want)
@@ -1211,8 +1208,8 @@ func TestAmount_Format(t *testing.T) {
 func TestAmount_Cmp(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, b string
-			want       int
+			m, d, e string
+			want    int
 		}{
 			{"USD", "-2", "-2", 0},
 			{"USD", "-2", "-1", -1},
@@ -1251,8 +1248,8 @@ func TestAmount_Cmp(t *testing.T) {
 			{"USD", "0.9999999999999999999", "99999999999999999.99", -1},
 		}
 		for _, tt := range tests {
-			d := MustParseAmount(tt.curr, tt.a)
-			e := MustParseAmount(tt.curr, tt.b)
+			d := MustParseAmount(tt.m, tt.d)
+			e := MustParseAmount(tt.m, tt.e)
 			got, err := d.Cmp(e)
 			if err != nil {
 				t.Errorf("%q.Cmp(%q) failed: %v", d, e, err)
@@ -1277,8 +1274,8 @@ func TestAmount_Cmp(t *testing.T) {
 func TestAmount_CmpAbs(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, b string
-			want       int
+			m, d, e string
+			want    int
 		}{
 			{"USD", "-2", "-2", 0},
 			{"USD", "-2", "-1", 1},
@@ -1317,8 +1314,8 @@ func TestAmount_CmpAbs(t *testing.T) {
 			{"USD", "0.9999999999999999999", "99999999999999999.99", -1},
 		}
 		for _, tt := range tests {
-			d := MustParseAmount(tt.curr, tt.a)
-			e := MustParseAmount(tt.curr, tt.b)
+			d := MustParseAmount(tt.m, tt.d)
+			e := MustParseAmount(tt.m, tt.e)
 			got, err := d.CmpAbs(e)
 			if err != nil {
 				t.Errorf("%q.CmpAbs(%q) failed: %v", d, e, err)
@@ -1343,8 +1340,8 @@ func TestAmount_CmpAbs(t *testing.T) {
 func TestAmount_CmpTotal(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, b string
-			want       int
+			m, d, e string
+			want    int
 		}{
 			{"USD", "-2", "-2", 0},
 			{"USD", "-2", "-1", -1},
@@ -1383,8 +1380,8 @@ func TestAmount_CmpTotal(t *testing.T) {
 			{"USD", "0.9999999999999999999", "99999999999999999.99", -1},
 		}
 		for _, tt := range tests {
-			d := MustParseAmount(tt.curr, tt.a)
-			e := MustParseAmount(tt.curr, tt.b)
+			d := MustParseAmount(tt.m, tt.d)
+			e := MustParseAmount(tt.m, tt.e)
 			got, err := d.CmpTotal(e)
 			if err != nil {
 				t.Errorf("%q.CmpTotal(%q) failed: %v", d, e, err)
@@ -1409,7 +1406,7 @@ func TestAmount_CmpTotal(t *testing.T) {
 func TestAmount_Min(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, b, want string
+			m, d, e, want string
 		}{
 			{"USD", "-2", "-2", "-2"},
 			{"USD", "-2", "-1", "-2"},
@@ -1446,14 +1443,14 @@ func TestAmount_Min(t *testing.T) {
 			{"USD", "-1.2300", "-1.23", "-1.2300"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			b := MustParseAmount(tt.curr, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.m, tt.e)
 			got, err := a.Min(b)
 			if err != nil {
 				t.Errorf("%q.Min(%q) failed: %v", a, b, err)
 				continue
 			}
-			want := MustParseAmount(tt.curr, tt.want)
+			want := MustParseAmount(tt.m, tt.want)
 			if got != want {
 				t.Errorf("%q.Min(%q) = %q, want %q", a, b, got, want)
 			}
@@ -1473,7 +1470,7 @@ func TestAmount_Min(t *testing.T) {
 func TestAmount_Max(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, b, want string
+			m, d, e, want string
 		}{
 			{"USD", "-2", "-2", "-2"},
 			{"USD", "-2", "-1", "-1"},
@@ -1510,14 +1507,14 @@ func TestAmount_Max(t *testing.T) {
 			{"USD", "-1.2300", "-1.23", "-1.23"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			b := MustParseAmount(tt.curr, tt.b)
+			a := MustParseAmount(tt.m, tt.d)
+			b := MustParseAmount(tt.m, tt.e)
 			got, err := a.Max(b)
 			if err != nil {
 				t.Errorf("%q.Max(%q) failed: %v", a, b, err)
 				continue
 			}
-			want := MustParseAmount(tt.curr, tt.want)
+			want := MustParseAmount(tt.m, tt.want)
 			if got != want {
 				t.Errorf("%q.Max(%q) = %q, want %q", a, b, got, want)
 			}
@@ -1534,10 +1531,11 @@ func TestAmount_Max(t *testing.T) {
 	})
 }
 
+//nolint:revive
 func TestAmount_Clamp(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
-			curr, a, min, max, want string
+			m, d, min, max, want string
 		}{
 			{"USD", "0", "-2", "-1", "-1"},
 			{"USD", "0", "-1", "1", "0"},
@@ -1564,15 +1562,15 @@ func TestAmount_Clamp(t *testing.T) {
 			{"USD", "1.23", "1", "1.23", "1.23"},
 		}
 		for _, tt := range tests {
-			a := MustParseAmount(tt.curr, tt.a)
-			min := MustParseAmount(tt.curr, tt.min)
-			max := MustParseAmount(tt.curr, tt.max)
+			a := MustParseAmount(tt.m, tt.d)
+			min := MustParseAmount(tt.m, tt.min)
+			max := MustParseAmount(tt.m, tt.max)
 			got, err := a.Clamp(min, max)
 			if err != nil {
 				t.Errorf("%q.Clamp(%q, %q) failed: %v", a, min, max, err)
 				continue
 			}
-			want := MustParseAmount(tt.curr, tt.want)
+			want := MustParseAmount(tt.m, tt.want)
 			if got != want {
 				t.Errorf("%q.Clamp(%q, %q) = %q, want %q", a, min, max, got, want)
 			}
@@ -1603,9 +1601,9 @@ func TestAmount_Clamp(t *testing.T) {
 
 func TestAmount_Rescale(t *testing.T) {
 	tests := []struct {
-		curr, a string
-		scale   int
-		want    string
+		m, d  string
+		scale int
+		want  string
 	}{
 		// Padding
 		{"JPY", "0", 0, "0"},
@@ -1656,9 +1654,9 @@ func TestAmount_Rescale(t *testing.T) {
 		{"OMR", "9999999999999999.999", 4, "9999999999999999.999"},
 	}
 	for _, tt := range tests {
-		a := MustParseAmount(tt.curr, tt.a)
+		a := MustParseAmount(tt.m, tt.d)
 		got := a.Rescale(tt.scale)
-		want := MustParseAmount(tt.curr, tt.want)
+		want := MustParseAmount(tt.m, tt.want)
 		if got != want {
 			t.Errorf("%q.Rescale(%v) = %q, want %q", a, tt.scale, got, want)
 		}
@@ -1667,7 +1665,7 @@ func TestAmount_Rescale(t *testing.T) {
 
 func TestAmount_Quantize(t *testing.T) {
 	tests := []struct {
-		curr, a, b, want string
+		m, d, e, want string
 	}{
 		// Padding
 		{"JPY", "0", "0", "0"},
@@ -1717,10 +1715,10 @@ func TestAmount_Quantize(t *testing.T) {
 		{"USD", "1", "0.0000000000000000000", "1.0000000000000000000"},
 	}
 	for _, tt := range tests {
-		a := MustParseAmount(tt.curr, tt.a)
-		b := MustParseAmount(tt.curr, tt.b)
+		a := MustParseAmount(tt.m, tt.d)
+		b := MustParseAmount(tt.m, tt.e)
 		got := a.Quantize(b)
-		want := MustParseAmount(tt.curr, tt.want)
+		want := MustParseAmount(tt.m, tt.want)
 		if got != want {
 			t.Errorf("%q.Quantize(%q) = %q, want %q", a, b, got, want)
 		}
