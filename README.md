@@ -10,23 +10,22 @@
 
 Package money implements immutable monetary amounts and exchange rates for Go.
 
-## Features
+## Key Features
 
-- **Optimized Performance** - Utilizes `uint64` for coefficients, reducing heap
-  allocations and memory consumption.
-- **High Precision** - Supports 19 digits of precision, which allows representation
-  of amounts between -99,999,999,999,999,999.99 and 99,999,999,999,999,999.99 inclusive.
-- **Immutability** - Once an amount or exchange rate is set, it remains unchanged.
-  This immutability ensures safe concurrent access across goroutines.
-- **Banker's Rounding** - Methods use half-to-even rounding, also known as "banker's rounding",
-  which minimizes cumulative rounding errors commonly seen in financial calculations.
-- **No Panics** - All methods are designed to be panic-free.
-  Instead of potentially crashing your application, they return errors for issues
-  such as overflow, division by zero, or currency mismatch.
-- **Correctness** - Fuzz testing is used to [cross-validate] arithmetic operations
-  against the [cockroachdb] and [shopspring] decimal packages.
+- **Immutability** - Once set, an amount or exchange rate remains constant,
+  ensuring safe concurrent access across goroutines.
+- **Banker's Rounding** - Uses half-to-even rounding, also known as "banker's rounding",
+  to minimize cumulative rounding errors commonly seen in financial calculations.
+- **No Panics** - All methods are panic-free, returning errors instead of crashing
+  your application in cases such as overflow, division by zero, or currency mismatch.
+- **Zero Heap Allocation** - Optimized to avoid heap allocations,
+  reducing garbage collector impact during arithmetic operations.
+- **High Precision** - Supports up to 19 digits of precision, representing amounts
+  from -99,999,999,999,999,999.99 to 99,999,999,999,999,999.99 inclusive.
+- **Correctness** - Arithmetic operations are cross-validated against the
+  [cockroachdb/apd] and [shopspring/decimal] packages through extensive [fuzz testing].
 
-## Getting started
+## Getting Started
 
 ### Installation
 
@@ -36,10 +35,10 @@ To add the money package to your Go workspace:
 go get github.com/govalues/money
 ```
 
-### Usage
+### Basic Usage
 
-Create amount using one of the constructors.
-After creating a monetary amount, various operations can be performed:
+Create an amount using one of the constructors.
+After creating an amount, you can perform various operations as shown below:
 
 ```go
 package main
@@ -62,14 +61,18 @@ func main() {
     // Operations
     fmt.Println(a.Add(b))          // $8.00 + $12.50
     fmt.Println(a.Sub(b))          // $8.00 - $12.50
+    fmt.Println(a.SubAbs(b))       // abs($8.00 - $12.50)
 
     fmt.Println(a.Mul(x))          // $8.00 * 2
-    fmt.Println(a.FMA(x, b))       // $8.00 * 2 + $12.50
+    fmt.Println(a.AddMul(b, x))    // $8.00 + $12.50 * 2
+    fmt.Println(a.SubMul(b, x))    // $8.00 - $12.50 * 2
     fmt.Println(r.Conv(a))         // $8.00 * $/€ 0.9
 
-    fmt.Println(a.Quo(x))          // $8.00 ÷ 2
-    fmt.Println(a.QuoRem(x))       // $8.00 ÷ 2, $8.00 mod 2
-    fmt.Println(a.Rat(b))          // $8.00 ÷ $12.50
+    fmt.Println(a.Quo(x))          // $8.00 / 2
+    fmt.Println(a.AddQuo(b, x))    // $8.00 + $12.50 / 2
+    fmt.Println(a.SubQuo(b, x))    // $8.00 - $12.50 / 2
+    fmt.Println(a.QuoRem(x))       // $8.00 div 2, $8.00 mod 2
+    fmt.Println(a.Rat(b))          // $8.00 / $12.50
     fmt.Println(a.Split(3))        // $8.00 into 3 parts
 
     // Rounding to 2 decimal places
@@ -84,11 +87,11 @@ func main() {
     fmt.Println(d.String())        // USD 7.896
 
     // Formatting
-    fmt.Printf("%v\n", d)          // USD 7.896
-    fmt.Printf("%[1]f %[1]c\n", d) // 7.896 USD
-    fmt.Printf("%f\n", d)          // 7.896
-    fmt.Printf("%c\n", d)          // USD
-    fmt.Printf("%d\n", d)          // 790
+    fmt.Printf("%v", d)            // USD 7.896
+    fmt.Printf("%[1]f %[1]c", d)   // 7.896 USD
+    fmt.Printf("%f", d)            // 7.896
+    fmt.Printf("%c", d)            // USD
+    fmt.Printf("%d", d)            // 790
 }
 ```
 
@@ -123,29 +126,21 @@ pkg: github.com/govalues/money-tests
 cpu: AMD Ryzen 7 3700C  with Radeon Vega Mobile Gfx 
 ```
 
-| Test Case   | Expression            | govalues | [rhymond] v1.0.10 | [bojanz] v1.2.1 | govalues vs rhymond | govalues vs bojanz |
-| ----------- | --------------------- | -------: | ----------------: | --------------: | ------------------: | -----------------: |
-| Add         | $2.00 + $3.00         |   22.95n |           218.30n |         144.10n |            +851.41% |           +528.02% |
-| Mul         | $2.00 * 3             |   21.80n |           133.40n |         239.60n |            +511.79% |           +998.83% |
-| QuoExact    | $2.00 ÷ 4             |   80.12n |       n/a[^nodiv] |         468.05n |                 n/a |           +484.19% |
-| QuoInfinite | $2.00 ÷ 3             |   602.1n |       n/a[^nodiv] |          512.4n |                 n/a |            -14.91% |
-| Split       | $2.00 into 10 parts   |   374.9n |            897.0n |   n/a[^nosplit] |            +139.28% |                n/a |
-| Conv        | $2.00 to €            |   30.88n |      n/a[^noconv] |         348.50n |                 n/a |          +1028.38% |
-| Parse       | $1                    |   44.99n |           139.50n |          99.09n |            +210.07% |           +120.26% |
-| Parse       | $123.456              |   61.45n |           148.60n |         240.90n |            +141.82% |           +292.03% |
-| Parse       | $123456789.1234567890 |   131.2n |            204.4n |          253.0n |             +55.85% |            +92.87% |
-| String      | $1                    |   38.48n |           200.70n |          89.92n |            +421.50% |           +133.65% |
-| String      | $123.456              |   56.34n |           229.90n |         127.05n |            +308.02% |           +125.49% |
-| String      | $123456789.1234567890 |   84.73n |           383.30n |         277.55n |            +352.38% |           +227.57% |
-| Telco       | see [specification]   |   224.2n |   n/a[^nofracmul] |         1944.0n |                 n/a |           +766.89% |
-
-[^nodiv]: [rhymond] does not support division.
-
-[^noconv]: [rhymond] does not support currency conversion.
-
-[^nofracmul]: [rhymond] does not support multiplication by a fraction.
-
-[^nosplit]: [bojanz] does not support splitting into parts.
+| Test Case     | Expression            | govalues | [rhymond] v1.0.10 | [bojanz] v1.2.1 | govalues vs rhymond | govalues vs bojanz |
+| ------------- | --------------------- | -------: | ----------------: | --------------: | ------------------: | -----------------: |
+| Add           | $2.00 + $3.00         |   22.95n |           218.30n |         144.10n |            +851.41% |           +528.02% |
+| Mul           | $2.00 * 3             |   21.80n |           133.40n |         239.60n |            +511.79% |           +998.83% |
+| Quo (exact)   | $2.00 / 4             |   80.12n |               n/a |         468.05n |                 n/a |           +484.19% |
+| Quo (inexact) | $2.00 / 3             |   602.1n |               n/a |          512.4n |                 n/a |            -14.91% |
+| Split         | $2.00 into 10 parts   |   374.9n |            897.0n |             n/a |            +139.28% |                n/a |
+| Conv          | $2.00 to €            |   30.88n |               n/a |         348.50n |                 n/a |          +1028.38% |
+| Parse         | $1                    |   44.99n |           139.50n |          99.09n |            +210.07% |           +120.26% |
+| Parse         | $123.456              |   61.45n |           148.60n |         240.90n |            +141.82% |           +292.03% |
+| Parse         | $123456789.1234567890 |   131.2n |            204.4n |          253.0n |             +55.85% |            +92.87% |
+| String        | $1                    |   38.48n |           200.70n |          89.92n |            +421.50% |           +133.65% |
+| String        | $123.456              |   56.34n |           229.90n |         127.05n |            +308.02% |           +125.49% |
+| String        | $123456789.1234567890 |   84.73n |           383.30n |         277.55n |            +352.38% |           +227.57% |
+| Telco         | see [specification]   |   224.2n |               n/a |         1944.0n |                 n/a |           +766.89% |
 
 The benchmark results shown in the table are provided for informational purposes
 only and may vary depending on your specific use case.
@@ -166,7 +161,7 @@ only and may vary depending on your specific use case.
 [awesomeb]: https://awesome.re/mentioned-badge.svg
 [rhymond]: https://pkg.go.dev/github.com/Rhymond/go-money
 [bojanz]: https://pkg.go.dev/github.com/bojanz/currency
-[cockroachdb]: https://pkg.go.dev/github.com/cockroachdb/apd
-[shopspring]: https://pkg.go.dev/github.com/shopspring/decimal
+[cockroachdb/apd]: https://pkg.go.dev/github.com/cockroachdb/apd
+[shopspring/decimal]: https://pkg.go.dev/github.com/shopspring/decimal
 [specification]: https://speleotrove.com/decimal/telcoSpec.html
-[cross-validate]: https://github.com/govalues/decimal-tests/blob/main/decimal_fuzz_test.go
+[fuzz testing]: https://github.com/govalues/decimal-tests

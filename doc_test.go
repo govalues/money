@@ -1,6 +1,8 @@
 package money_test
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -118,9 +120,9 @@ func (s Statement) TotalInterest() (money.Amount, error) {
 		return money.Amount{}, fmt.Errorf("empty statement")
 	}
 	var err error
-	total := s[0].Interest
-	for i := 1; i < len(s); i++ {
-		total, err = total.Add(s[i].Interest)
+	total := s[0].Interest.Zero()
+	for _, line := range s {
+		total, err = total.Add(line.Interest)
 		if err != nil {
 			return money.Amount{}, err
 		}
@@ -145,8 +147,8 @@ func DailyRate(yearlyRate decimal.Decimal) (decimal.Decimal, error) {
 func MonthlyInterest(balance money.Amount, dailyRate decimal.Decimal, daysInMonth int) (money.Amount, error) {
 	var err error
 	interest := balance.Zero()
-	for i := 0; i < daysInMonth; i++ {
-		interest, err = balance.FMA(dailyRate, interest)
+	for range daysInMonth {
+		interest, err = interest.AddMul(balance, dailyRate)
 		if err != nil {
 			return money.Amount{}, err
 		}
@@ -239,7 +241,7 @@ func Example_effectiveRate() {
 }
 
 type ScheduleLine struct {
-	Month     int
+	Period    int
 	Repayment money.Amount
 	Principal money.Amount
 	Interest  money.Amount
@@ -248,9 +250,9 @@ type ScheduleLine struct {
 
 type AmortizationSchedule []ScheduleLine
 
-func (p AmortizationSchedule) Append(month int, repayment, principal, interest, balance money.Amount) AmortizationSchedule {
+func (p AmortizationSchedule) Append(period int, repayment, principal, interest, balance money.Amount) AmortizationSchedule {
 	newLine := ScheduleLine{
-		Month:     month,
+		Period:    period,
 		Repayment: repayment,
 		Principal: principal,
 		Interest:  interest,
@@ -264,9 +266,9 @@ func (p AmortizationSchedule) TotalRepayment() (money.Amount, error) {
 		return money.Amount{}, fmt.Errorf("empty schedule")
 	}
 	var err error
-	total := p[0].Repayment
-	for i := 1; i < len(p); i++ {
-		total, err = total.Add(p[i].Repayment)
+	total := p[0].Repayment.Zero()
+	for _, line := range p {
+		total, err = total.Add(line.Repayment)
 		if err != nil {
 			return money.Amount{}, err
 		}
@@ -279,9 +281,9 @@ func (p AmortizationSchedule) TotalPrincipal() (money.Amount, error) {
 		return money.Amount{}, fmt.Errorf("empty schedule")
 	}
 	var err error
-	total := p[0].Principal
-	for i := 1; i < len(p); i++ {
-		total, err = total.Add(p[i].Principal)
+	total := p[0].Principal.Zero()
+	for _, line := range p {
+		total, err = total.Add(line.Principal)
 		if err != nil {
 			return money.Amount{}, err
 		}
@@ -294,9 +296,9 @@ func (p AmortizationSchedule) TotalInterest() (money.Amount, error) {
 		return money.Amount{}, fmt.Errorf("empty schedule")
 	}
 	var err error
-	total := p[0].Interest
-	for i := 1; i < len(p); i++ {
-		total, err = total.Add(p[i].Interest)
+	total := p[0].Interest.Zero()
+	for _, line := range p {
+		total, err = total.Add(line.Interest)
 		if err != nil {
 			return money.Amount{}, err
 		}
@@ -306,31 +308,19 @@ func (p AmortizationSchedule) TotalInterest() (money.Amount, error) {
 
 // MonthlyRate computes YearlyRate / 12.
 func MonthlyRate(yearlyRate decimal.Decimal) (decimal.Decimal, error) {
-	monthsInYear, err := decimal.New(12, 0)
-	if err != nil {
-		return decimal.Decimal{}, err
-	}
-	monthlyRate, err := yearlyRate.Quo(monthsInYear)
-	if err != nil {
-		return decimal.Decimal{}, err
-	}
-	return monthlyRate, nil
+	monthsInYear := decimal.MustNew(12, 0)
+	return yearlyRate.Quo(monthsInYear)
 }
 
 // AnnuityPayment computes Amount * Rate / (1 - (1 + Rate)^(-Periods)).
 func AnnuityPayment(amount money.Amount, rate decimal.Decimal, periods int) (money.Amount, error) {
-	one := rate.One()
-	// Numerator
-	num, err := amount.Mul(rate)
-	if err != nil {
-		return money.Amount{}, err
-	}
 	// Denominator
+	one := rate.One()
 	den, err := rate.Add(one)
 	if err != nil {
 		return money.Amount{}, err
 	}
-	den, err = den.Pow(-periods)
+	den, err = den.PowInt(-periods)
 	if err != nil {
 		return money.Amount{}, err
 	}
@@ -338,6 +328,12 @@ func AnnuityPayment(amount money.Amount, rate decimal.Decimal, periods int) (mon
 	if err != nil {
 		return money.Amount{}, err
 	}
+	// Numerator
+	num, err := amount.Mul(rate)
+	if err != nil {
+		return money.Amount{}, err
+	}
+	// Payment
 	res, err := num.Quo(den)
 	if err != nil {
 		return money.Amount{}, err
@@ -355,8 +351,11 @@ func SimulateSchedule(balance money.Amount, yearlyRate decimal.Decimal, years in
 	if err != nil {
 		return nil, err
 	}
+
 	schedule := AmortizationSchedule{}
-	for i := 0; i < months; i++ {
+
+	// All periods except the last
+	for i := range months - 1 {
 		interest, err := balance.Mul(monthlyRate)
 		if err != nil {
 			return nil, err
@@ -372,6 +371,21 @@ func SimulateSchedule(balance money.Amount, yearlyRate decimal.Decimal, years in
 		}
 		schedule = schedule.Append(i+1, repayment, principal, interest, balance)
 	}
+
+	// The last period
+	interest, err := balance.Mul(monthlyRate)
+	if err != nil {
+		return nil, err
+	}
+	interest = interest.RoundToCurr()
+	principal := balance
+	balance = balance.Zero()
+	repayment, err = principal.Add(interest)
+	if err != nil {
+		return nil, err
+	}
+	schedule = schedule.Append(months, repayment, principal, interest, balance)
+
 	return schedule, nil
 }
 
@@ -381,7 +395,7 @@ func SimulateSchedule(balance money.Amount, yearlyRate decimal.Decimal, years in
 func Example_loanAmortization() {
 	// Set up initial loan balance and interest rate
 	initialBalance := money.MustParseAmount("USD", "12000")
-	yearlyRate := decimal.MustParse("0.10")
+	yearlyRate := decimal.MustParse("0.1")
 	years := 1
 
 	// Display the initial loan balance and interest rate
@@ -398,7 +412,7 @@ func Example_loanAmortization() {
 	// repayment, principal, interest and outstanding loan balance
 	fmt.Println("Month  Repayment   Principal   Interest    Outstanding")
 	for _, line := range schedule {
-		fmt.Printf("%5d %12f %11f %11f %11f\n", line.Month, line.Repayment, line.Principal, line.Interest, line.Balance)
+		fmt.Printf("%5d %12f %11f %11f %11f\n", line.Period, line.Repayment, line.Principal, line.Interest, line.Balance)
 	}
 
 	// Calculate and display the total amounts repaid, both principal and interest
@@ -434,8 +448,8 @@ func Example_loanAmortization() {
 	//     9      1054.99     1020.54       34.45     3112.96
 	//    10      1054.99     1029.05       25.94     2083.91
 	//    11      1054.99     1037.62       17.37     1046.29
-	//    12      1054.99     1046.27        8.72        0.02
-	// Total     12659.88    11999.98      659.90
+	//    12      1055.01     1046.29        8.72        0.00
+	// Total     12659.90    12000.00      659.90
 }
 
 func FromISO8583(s string) (money.Amount, error) {
@@ -471,7 +485,7 @@ func FromMoneyProto(curr string, units int64, nanos int32) (money.Amount, error)
 func ToMoneyProto(a money.Amount) (curr string, units int64, nanos int32, ok bool) {
 	curr = a.Curr().Code()
 	whole, frac, ok := a.Int64(9)
-	return curr, whole, int32(frac), ok
+	return curr, whole, int32(frac), ok //nolint:gosec
 }
 
 // This is an example of how to a parse a monetary amount formatted as [money.proto].
@@ -594,44 +608,56 @@ func ExampleCurrency_Scale() {
 	// 3
 }
 
-type Object struct {
-	Currency money.Currency `json:"currency"`
+type Account struct {
+	Balance decimal.Decimal `json:"bal_amt"`
+	Curr    money.Currency  `json:"bal_curr"`
 }
 
-func ExampleCurrency_UnmarshalText_json() {
-	var v Object
-	_ = json.Unmarshal([]byte(`{"currency":"USD"}`), &v)
-	fmt.Println(v)
-	// Output: {USD}
+func ExampleCurrency_UnmarshalJSON_json() {
+	var a Account
+	err := json.Unmarshal([]byte(`{"bal_amt": "1.23", "bal_curr":"USD"}`), &a)
+	fmt.Println(a, err)
+	// Output:
+	// {1.23 USD} <nil>
 }
 
-func ExampleCurrency_MarshalText_json() {
-	v := Object{
-		Currency: money.USD,
+func ExampleCurrency_MarshalJSON_json() {
+	a := money.MustParseAmount("USD", "5.67")
+	v := Account{
+		Balance: a.Decimal(),
+		Curr:    a.Curr(),
 	}
-	b, _ := json.Marshal(v)
-	fmt.Println(string(b))
-	// Output: {"currency":"USD"}
+	b, err := json.Marshal(v)
+	fmt.Println(string(b), err)
+	// Output:
+	// {"bal_amt":"5.67","bal_curr":"USD"} <nil>
 }
 
-type Entity struct {
-	Currency money.Currency `xml:"Currency"`
+type Transaction struct {
+	XMLName xml.Name `xml:"Txn"`
+	Amount  struct {
+		Value decimal.Decimal `xml:",chardata"`
+		Curr  money.Currency  `xml:"Ccy,attr"`
+	} `xml:"Amt"`
 }
 
 func ExampleCurrency_UnmarshalText_xml() {
-	var v Entity
-	_ = xml.Unmarshal([]byte(`<Entity><Currency>USD</Currency></Entity>`), &v)
-	fmt.Println(v)
-	// Output: {USD}
+	var t Transaction
+	err := xml.Unmarshal([]byte(`<Txn><Amt Ccy="USD">5.67</Amt></Txn>`), &t)
+	fmt.Println(t, err)
+	// Output:
+	// {{ Txn} {5.67 USD}} <nil>
 }
 
 func ExampleCurrency_MarshalText_xml() {
-	v := Entity{
-		Currency: money.USD,
-	}
-	b, _ := xml.Marshal(v)
-	fmt.Println(string(b))
-	// Output: <Entity><Currency>USD</Currency></Entity>
+	a := money.MustParseAmount("USD", "5.67")
+	t := Transaction{}
+	t.Amount.Value = a.Decimal()
+	t.Amount.Curr = a.Curr()
+	b, err := xml.Marshal(t)
+	fmt.Println(string(b), err)
+	// Output:
+	// <Txn><Amt Ccy="USD">5.67</Amt></Txn> <nil>
 }
 
 func ExampleCurrency_Scan() {
@@ -651,6 +677,91 @@ func ExampleCurrency_Format() {
 	fmt.Printf("%c\n", money.USD)
 	// Output:
 	// USD
+}
+
+func ExampleCurrency_AppendBinary() {
+	c := money.USD
+	var data []byte
+	data = append(data, 0x03)
+	data, err := c.AppendBinary(data)
+	data = append(data, 0x00)
+	fmt.Printf("[% x] %v\n", data, err)
+	// Output:
+	// [03 55 53 44 00] <nil>
+}
+
+func ExampleCurrency_AppendText() {
+	c := money.USD
+	var text []byte
+	text = append(text, "<Curr>"...)
+	text, err := c.AppendText(text)
+	text = append(text, "</Curr>"...)
+	fmt.Printf("%s %v\n", text, err)
+	// Output:
+	// <Curr>USD</Curr> <nil>
+}
+
+func ExampleCurrency_MarshalBSONValue_bson() {
+	c := money.USD
+	typ, data, err := c.MarshalBSONValue()
+	fmt.Printf("%v [% x] %v\n", typ, data, err)
+	// Output:
+	// 2 [04 00 00 00 55 53 44 00] <nil>
+}
+
+func ExampleCurrency_UnmarshalBSONValue_bson() {
+	data := []byte{
+		0x04, 0x00, 0x00, 0x00,
+		0x55, 0x53, 0x44, 0x00,
+	}
+
+	var c money.Currency
+	err := c.UnmarshalBSONValue(2, data)
+	fmt.Println(c, err)
+	// Output:
+	// USD <nil>
+}
+
+func ExampleCurrency_MarshalBinary_gob() {
+	data, err := marshalGOB(money.USD)
+	fmt.Printf("[% x] %v\n", data, err)
+	// Output:
+	// [13 7f 06 01 01 08 43 75 72 72 65 6e 63 79 01 ff 80 00 00 00 07 ff 80 00 03 55 53 44] <nil>
+}
+
+func marshalGOB(c money.Currency) ([]byte, error) {
+	var data bytes.Buffer
+	enc := gob.NewEncoder(&data)
+	err := enc.Encode(c)
+	if err != nil {
+		return nil, err
+	}
+	return data.Bytes(), nil
+}
+
+func ExampleCurrency_UnmarshalBinary_gob() {
+	data := []byte{
+		0x13, 0x7f, 0x06, 0x01,
+		0x01, 0x08, 0x43, 0x75,
+		0x72, 0x72, 0x65, 0x6e,
+		0x63, 0x79, 0x01, 0xff,
+		0x80, 0x00, 0x00, 0x00,
+		0x07, 0xff, 0x80, 0x00,
+		0x03, 0x55, 0x53, 0x44,
+	}
+	fmt.Println(unmarshalGOB(data))
+	// Output:
+	// USD <nil>
+}
+
+func unmarshalGOB(data []byte) (money.Currency, error) {
+	var c money.Currency
+	dec := gob.NewDecoder(bytes.NewReader(data))
+	err := dec.Decode(&c)
+	if err != nil {
+		return money.XXX, err
+	}
+	return c, nil
 }
 
 func ExampleNullCurrency_Scan() {
@@ -678,6 +789,72 @@ func ExampleNullCurrency_Value() {
 	// Output:
 	// USD <nil>
 	// <nil> <nil>
+}
+
+func ExampleNullCurrency_UnmarshalJSON_json() {
+	var n money.NullCurrency
+	err := json.Unmarshal([]byte(`null`), &n)
+	fmt.Println(n, err)
+
+	var m money.NullCurrency
+	err = json.Unmarshal([]byte(`"USD"`), &m)
+	fmt.Println(m, err)
+	// Output:
+	// {XXX false} <nil>
+	// {USD true} <nil>
+}
+
+func ExampleNullCurrency_MarshalJSON_json() {
+	n := money.NullCurrency{
+		Valid: false,
+	}
+	text, err := json.Marshal(n)
+	fmt.Println(string(text), err)
+
+	m := money.NullCurrency{
+		Currency: money.USD,
+		Valid:    true,
+	}
+	text, err = json.Marshal(m)
+	fmt.Println(string(text), err)
+	// Output:
+	// null <nil>
+	// "USD" <nil>
+}
+
+func ExampleNullCurrency_UnmarshalBSONValue_bson() {
+	var n money.NullCurrency
+	err := n.UnmarshalBSONValue(10, nil)
+	fmt.Println(n, err)
+
+	data := []byte{
+		0x04, 0x00, 0x00, 0x00,
+		0x55, 0x53, 0x44, 0x00,
+	}
+	var m money.NullCurrency
+	err = m.UnmarshalBSONValue(2, data)
+	fmt.Println(m, err)
+	// Output:
+	// {XXX false} <nil>
+	// {USD true} <nil>
+}
+
+func ExampleNullCurrency_MarshalBSONValue_bson() {
+	n := money.NullCurrency{
+		Valid: false,
+	}
+	t, data, err := n.MarshalBSONValue()
+	fmt.Printf("%v [% x] %v\n", t, data, err)
+
+	m := money.NullCurrency{
+		Currency: money.USD,
+		Valid:    true,
+	}
+	t, data, err = m.MarshalBSONValue()
+	fmt.Printf("%v [% x] %v\n", t, data, err)
+	// Output:
+	// 10 [] <nil>
+	// 2 [04 00 00 00 55 53 44 00] <nil>
 }
 
 func ExampleNewAmount_scales() {
@@ -952,12 +1129,36 @@ func ExampleAmount_SubAbs() {
 	// Output: USD 17.33 <nil>
 }
 
-func ExampleAmount_FMA() {
+func ExampleAmount_AddMul() {
 	a := money.MustParseAmount("USD", "5.67")
 	b := money.MustParseAmount("USD", "23.00")
 	e := decimal.MustParse("2")
-	fmt.Println(a.FMA(e, b))
-	// Output: USD 34.34 <nil>
+	fmt.Println(a.AddMul(b, e))
+	// Output: USD 51.67 <nil>
+}
+
+func ExampleAmount_AddQuo() {
+	a := money.MustParseAmount("USD", "5.67")
+	b := money.MustParseAmount("USD", "23.00")
+	e := decimal.MustParse("2")
+	fmt.Println(a.AddQuo(b, e))
+	// Output: USD 17.17 <nil>
+}
+
+func ExampleAmount_SubMul() {
+	a := money.MustParseAmount("USD", "5.67")
+	b := money.MustParseAmount("USD", "23.00")
+	e := decimal.MustParse("2")
+	fmt.Println(a.SubMul(b, e))
+	// Output: USD -40.33 <nil>
+}
+
+func ExampleAmount_SubQuo() {
+	a := money.MustParseAmount("USD", "5.67")
+	b := money.MustParseAmount("USD", "23.00")
+	e := decimal.MustParse("2")
+	fmt.Println(a.SubQuo(b, e))
+	// Output: USD -5.83 <nil>
 }
 
 func ExampleAmount_Mul() {
@@ -1353,13 +1554,13 @@ func ExampleAmount_Format_currencies() {
 	a := money.MustParseAmount("JPY", "5")
 	b := money.MustParseAmount("USD", "5")
 	c := money.MustParseAmount("OMR", "5")
-	fmt.Println("| v         | f     | d    | c   |")
-	fmt.Println("| --------- | ----- | ---- | --- |")
+	fmt.Printf("| %s        | %s    | %s   | %s  |\n", "%v", "%f", "%d", "%c")
+	fmt.Printf("| --------- | ----- | ---- | --- |\n")
 	fmt.Printf("| %-9[1]v | %5[1]f | %4[1]d | %[1]c |\n", a)
 	fmt.Printf("| %-9[1]v | %5[1]f | %4[1]d | %[1]c |\n", b)
 	fmt.Printf("| %-9[1]v | %5[1]f | %4[1]d | %[1]c |\n", c)
 	// Output:
-	// | v         | f     | d    | c   |
+	// | %v        | %f    | %d   | %c  |
 	// | --------- | ----- | ---- | --- |
 	// | JPY 5     |     5 |    5 | JPY |
 	// | USD 5.00  |  5.00 |  500 | USD |
@@ -1558,6 +1759,26 @@ func ExampleAmount_CmpTotal() {
 	// -1 <nil>
 }
 
+func ExampleAmount_Less() {
+	a := money.MustParseAmount("USD", "-23")
+	b := money.MustParseAmount("USD", "5.67")
+	fmt.Println(a.Less(b))
+	fmt.Println(b.Less(a))
+	// Output:
+	// true <nil>
+	// false <nil>
+}
+
+func ExampleAmount_Equal() {
+	a := money.MustParseAmount("USD", "-23")
+	b := money.MustParseAmount("USD", "5.67")
+	fmt.Println(a.Equal(b))
+	fmt.Println(a.Equal(a))
+	// Output:
+	// false <nil>
+	// true <nil>
+}
+
 func ExampleAmount_Max() {
 	a := money.MustParseAmount("USD", "23.00")
 	b := money.MustParseAmount("USD", "-5.67")
@@ -1572,6 +1793,7 @@ func ExampleAmount_Min() {
 	// Output: USD -5.67 <nil>
 }
 
+//nolint:revive
 func ExampleAmount_Clamp() {
 	min := money.MustParseAmount("USD", "-20")
 	max := money.MustParseAmount("USD", "20")
@@ -1742,7 +1964,7 @@ func ExampleNewExchRateFromInt64_currencies() {
 	// EUR/OMR 5.670 <nil>
 }
 
-func ExampleExchangeRate_Conv() {
+func ExampleExchangeRate_Conv_currencies() {
 	a := money.MustParseAmount("EUR", "100.00")
 	r := money.MustParseExchRate("EUR", "JPY", "160.00")
 	q := money.MustParseExchRate("EUR", "USD", "1.2500")
@@ -1754,6 +1976,17 @@ func ExampleExchangeRate_Conv() {
 	// JPY 16000.0000 <nil>
 	// USD 125.000000 <nil>
 	// OMR 42.0000000 <nil>
+}
+
+func ExampleExchangeRate_Conv_directions() {
+	a := money.MustParseAmount("EUR", "100.00")
+	b := money.MustParseAmount("JPY", "16000.00")
+	r := money.MustParseExchRate("EUR", "JPY", "160.00")
+	fmt.Println(r.Conv(a))
+	fmt.Println(r.Conv(b))
+	// Output:
+	// JPY 16000.0000 <nil>
+	// EUR 100.00 <nil>
 }
 
 func ExampleExchangeRate_Scale() {
@@ -1791,38 +2024,6 @@ func ExampleExchangeRate_Mul() {
 	// EUR/USD 5.103 <nil>
 	// EUR/USD 5.670 <nil>
 	// EUR/USD 6.237 <nil>
-}
-
-func ExampleExchangeRate_Inv_currencies() {
-	r := money.MustParseExchRate("EUR", "JPY", "5.67")
-	q := money.MustParseExchRate("EUR", "USD", "5.67")
-	p := money.MustParseExchRate("EUR", "OMR", "5.67")
-	fmt.Println(r.Inv())
-	fmt.Println(q.Inv())
-	fmt.Println(p.Inv())
-	// Output:
-	// JPY/EUR 0.1763668430335097002 <nil>
-	// USD/EUR 0.1763668430335097002 <nil>
-	// OMR/EUR 0.1763668430335097002 <nil>
-}
-
-func ExampleExchangeRate_Inv_scales() {
-	r := money.MustParseExchRate("EUR", "USD", "0.0567")
-	q := money.MustParseExchRate("EUR", "USD", "0.567")
-	p := money.MustParseExchRate("EUR", "USD", "5.67")
-	o := money.MustParseExchRate("EUR", "USD", "56.7")
-	n := money.MustParseExchRate("EUR", "USD", "567")
-	fmt.Println(r.Inv())
-	fmt.Println(q.Inv())
-	fmt.Println(p.Inv())
-	fmt.Println(o.Inv())
-	fmt.Println(n.Inv())
-	// Output:
-	// USD/EUR 17.63668430335097002 <nil>
-	// USD/EUR 1.763668430335097002 <nil>
-	// USD/EUR 0.1763668430335097002 <nil>
-	// USD/EUR 0.01763668430335097 <nil>
-	// USD/EUR 0.001763668430335097 <nil>
 }
 
 func ExampleExchangeRate_Base() {
@@ -1903,7 +2104,7 @@ func ExampleExchangeRate_CanConv() {
 	fmt.Println(r.CanConv(c))
 	// Output:
 	// true
-	// false
+	// true
 	// false
 }
 

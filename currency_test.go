@@ -24,6 +24,19 @@ func TestCurrency_Interfaces(t *testing.T) {
 	if !ok {
 		t.Errorf("%T does not implement encoding.TextMarshaler", c)
 	}
+	_, ok = c.(encoding.BinaryMarshaler)
+	if !ok {
+		t.Errorf("%T does not implement encoding.BinaryMarshaler", c)
+	}
+	// Uncomment when Go 1.24 is minimum supported version.
+	// _, ok = d.(encoding.TextAppender)
+	// if !ok {
+	// 	t.Errorf("%T does not implement encoding.TextAppender", d)
+	// }
+	// _, ok = d.(encoding.BinaryAppender)
+	// if !ok {
+	// 	t.Errorf("%T does not implement encoding.BinaryAppender", d)
+	// }
 	_, ok = c.(driver.Valuer)
 	if !ok {
 		t.Errorf("%T does not implement driver.Valuer", c)
@@ -34,6 +47,10 @@ func TestCurrency_Interfaces(t *testing.T) {
 	_, ok = c.(encoding.TextUnmarshaler)
 	if !ok {
 		t.Errorf("%T does not implement encoding.TextUnmarshaler", c)
+	}
+	_, ok = c.(encoding.BinaryUnmarshaler)
+	if !ok {
+		t.Errorf("%T does not implement encoding.BinaryUnmarshaler", c)
 	}
 	_, ok = c.(sql.Scanner)
 	if !ok {

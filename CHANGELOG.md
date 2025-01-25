@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.4] - 2025-01-26
+
+### Added
+
+- Implemented `Amount.AddMul`, `Amount.AddQuo`, `Amount.SubMul`, `Amount.SubQuo`, `Amount.Equal`, `Amount.Less`.
+
+- Implemented `Currency.AppendBinary`, `Currency.AppendText`, `Currency.UnmarshalJSON`, `Currency.MarshalJSON`, `Currency.UnmarshalBSONValue`, `Currency.MarshalBSONValue`.
+
+### Changed
+
+- `ExchangeRate.Conv` supports both direct and reverse conversions.
+- Deprecated `Amount.FMA` and `ExchangeRate.Inv` methods.
+
 ## [0.2.3] - 2024-07-26
 
 ### Changed

@@ -3,7 +3,7 @@ Package money implements immutable amounts and exchange rates.
 
 # Representation
 
-[Currency] is represented as an integer index into an in-memory array that
+[Currency] is represented as an integer index in an in-memory array that
 stores properties defined by [ISO 4217]:
   - Code: a three-letter alphabetic code.
   - Num: a three-digit numeric code.
@@ -13,11 +13,10 @@ stores properties defined by [ISO 4217]:
 The currently supported currencies use scales of 0, 2, or 3:
   - A scale of 0 indicates currencies without minor units.
     For example, the [Japanese Yen] does not have minor units.
-  - A scale of 2 indicates currencies that use 2 digits to represent their
-    minor units.
-    For example, the [US Dollar] represents its minor unit, 1 cent,
+  - A scale of 2 indicates currencies with 2 digits for minor units.
+    For example, the [US Dollar] represents its minor unit (1 cent)
     as 0.01 dollars.
-  - A scale of 3 indicates currencies with 3 digits in their minor units.
+  - A scale of 3 indicates currencies with 3 digits for minor units.
     For instance, the minor unit of the [Omani Rial], 1 baisa, is represented
     as 0.001 rials.
 
@@ -72,27 +71,27 @@ See the documentation for each method for more details.
 
 # Operations
 
-Each arithmetic operation is carried out in two steps:
+Each arithmetic operation is performed in two steps:
 
  1. The operation is initially performed using uint64 arithmetic.
     If no overflow occurs, the exact result is immediately returned.
     If an overflow does occur, the operation proceeds to step 2.
 
- 2. The operation is repeated with increased precision using [big.Int] arithmetic.
+ 2. The operation is repeated with higher precision using [big.Int] arithmetic.
     The result is then rounded to 19 digits.
     If no significant digits are lost during rounding, the inexact result is returned.
-    If any significant digit is lost, an overflow error is returned.
+    If any significant digits are lost, an overflow error is returned.
 
 Step 1 was introduced to improve performance by avoiding heap allocation
 for [big.Int] and the complexities associated with [big.Int] arithmetic.
-It is expected that, in transactional financial systems, the majority of
-arithmetic operations will successfully compute an exact result during step 1.
+In transactional financial systems, most arithmetic operations are expected to
+compute an exact result during step 1.
 
-The following rules are used to determine the significance of digits during step 2:
+The following rules determine the significance of digits during step 2:
 
-  - [Amount.Add], [Amount.Sub], [Amount.SubAbs], [Amount.Mul], [Amount.FMA],
-    [Amount.Quo], [Amount.QuoRem], [ExchangeRate.Conv], [ExchangeRate.Mul],
-    [ExchangeRate.Inv]:
+  - [Amount.Add], [Amount.Sub], [Amount.SubAbs], [Amount.Mul], [Amount.AddMul],
+    [Amount.AddQuo], [Amount.SubMul], [Amount.SubQuo],
+    [Amount.Quo], [Amount.QuoRem], [ExchangeRate.Conv], [ExchangeRate.Mul]:
     All digits in the integer part are significant.
     In the fractional part, digits are significant up to the scale of
     the currency.
@@ -103,7 +102,7 @@ The following rules are used to determine the significance of digits during step
 
 # Rounding
 
-Implicit rounding is applied when a result exceeds 19 digits.
+Implicit rounding applies when a result exceeds 19 digits.
 In such cases, the result is rounded to 19 digits using half-to-even rounding.
 This method ensures that rounding errors are evenly distributed between rounding up
 and rounding down.
@@ -133,12 +132,12 @@ All methods are panic-free and pure.
 Errors are returned in the following cases:
 
   - Currency Mismatch.
-    All arithmetic operations, except for [Amount.Rat], return an error if
-    the operands are denominated in different currencies.
+    All arithmetic operations except for [Amount.Rat] return an error if
+    the operands use different currencies.
 
   - Division by Zero.
-    Unlike the standard library, [Amount.Quo], [Amount.QuoRem], [Amount.Rat],
-    and [ExchangeRate.Inv] do not panic when dividing by 0.
+    Unlike the standard library, [Amount.Quo], [Amount.QuoRem], [Amount.Rat], [Amount.AddQuo],
+    and [Amount.SubQuo] do not panic when dividing by 0.
     Instead, they return an error.
 
   - Overflow.
@@ -146,11 +145,11 @@ Errors are returned in the following cases:
     Arithmetic operations return an error for out-of-range values.
 
   - Underflow.
-    All arithmetic operations, except for [ExchangeRate.Inv] and [ExchangeRate.Mul],
+    All arithmetic operations, except for [ExchangeRate.Mul],
     do not return an error in case of underflow.
     If the result is an amount between -0.00000000000000000005
     and 0.00000000000000000005 inclusive, it is rounded to 0.
-    [ExchangeRate.Inv] and [ExchangeRate.Mul] return an error in cases of underflow,
+    [ExchangeRate.Mul] return an error in cases of underflow,
     as the result of these operations is an exchange rate, and exchange rates
     cannot be 0.
 
